@@ -13,9 +13,6 @@ WSS_PUBLIC_URL = 'wss://testws.btse.io/spotWS'
 BTSE_WSEndpoint = 'wss://testws.btse.io'
 BTSE_Endpoint = 'https://testapi.btse.io/spot/api/v3.2/'
 
-API_REASONS = {
-}
-
 # supported BTSE currencies
 CURRENCIES = [
     "BTC",
@@ -55,6 +52,9 @@ BTSE_ENUM = {
     1003: "ORDER_LIQUIDATION",
     1004: "ORDER_ADL"
 }
+
+# do we need this? or is it just BTSE_ENUM
+API_REASONS = BTSE_ENUM
 
 API_STATUS = {
     200: "API request was successful, refer to the specific API response for expected payload",
