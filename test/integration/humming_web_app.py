@@ -12,6 +12,8 @@ import requests
 from threading import Thread
 import json
 
+TEST_URL = "www.google.com"
+
 StockResponse = namedtuple("StockResponse", "method host path params is_json response")
 
 
@@ -172,7 +174,7 @@ class HummingWebAppTest(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.ev_loop: asyncio.AbstractEventLoop = asyncio.get_event_loop()
         cls.web_app: HummingWebApp = HummingWebApp.get_instance()
-        cls.host = "www.google.com"
+        cls.host = TEST_URL
         cls.web_app.add_host_to_mock(cls.host)
         cls.web_app.update_response("get", cls.host, "/", data=cls.web_app.TEST_RESPONSE, is_json=False)
         cls.web_app.start()
@@ -193,7 +195,7 @@ class HummingWebAppTest(unittest.TestCase):
 
     async def _test_web_app_response(self):
         async with ClientSession() as client:
-            async with client.get("http://www.google.com/") as resp:
+            async with client.get("http://" + TEST_URL) as resp:
                 text: str = await resp.text()
                 print(text)
                 self.assertEqual(self.web_app.TEST_RESPONSE, text)
@@ -202,25 +204,25 @@ class HummingWebAppTest(unittest.TestCase):
         self.ev_loop.run_until_complete(self._test_web_app_response())
 
     def test_get_request_response(self):
-        r = requests.get("http://www.google.com/")
+        r = requests.get("http://" + TEST_URL)
         self.assertEqual(self.web_app.TEST_RESPONSE, r.text)
 
     def test_update_response(self):
-        self.web_app.update_response('get', 'www.google.com', '/', {"a": 1, "b": 2})
-        r = requests.get("http://www.google.com/")
+        self.web_app.update_response('get', TEST_URL, '/', {"a": 1, "b": 2})
+        r = requests.get("http://" + TEST_URL)
         r_json = json.loads(r.text)
         self.assertEqual(r_json["a"], 1)
 
-        self.web_app.update_response('post', 'www.google.com', '/', "default")
-        self.web_app.update_response('post', 'www.google.com', '/', {"a": 1, "b": 2}, params={"para_a": '11'})
-        r = requests.post("http://www.google.com/", data={"para_a": 11, "para_b": 22})
+        self.web_app.update_response('post', TEST_URL, '/', "default")
+        self.web_app.update_response('post', TEST_URL, '/', {"a": 1, "b": 2}, params={"para_a": '11'})
+        r = requests.post("http://" + TEST_URL, data={"para_a": 11, "para_b": 22})
         r_json = json.loads(r.text)
         self.assertEqual(r_json["a"], 1)
 
     def test_query_string(self):
-        self.web_app.update_response('get', 'www.google.com', '/', "default")
-        self.web_app.update_response('get', 'www.google.com', '/', {"a": 1}, params={"qs1": "1"})
-        r = requests.get("http://www.google.com/?qs1=1")
+        self.web_app.update_response('get', TEST_URL, '/', "default")
+        self.web_app.update_response('get', TEST_URL, '/', {"a": 1}, params={"qs1": "1"})
+        r = requests.get("http://" + TEST_URL + "?qs1=1")
         r_json = json.loads(r.text)
         self.assertEqual(r_json["a"], 1)
 
