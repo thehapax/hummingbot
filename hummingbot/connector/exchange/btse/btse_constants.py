@@ -1,9 +1,10 @@
 from decimal import Decimal
 
 EXCHANGE_NAME = "btse"
-REST_URL = "https://api.btse.com/spot/api/v3.2/"
 WSS_PRIVATE_URL = 'wss://testws.btse.io/spotWS'
 WSS_PUBLIC_URL = 'wss://testws.btse.io/spotWS'
+# WSS_PRIVATE_URL = 'wss://ws.btse.com/spotWS'
+# WSS_PUBLIC_URL = 'wss://ws.btse.com/spotWS'
 
 # Production
 # BTSE_Endpoint = 'https://api.btse.com/spot/api/v3.2'
@@ -12,6 +13,9 @@ WSS_PUBLIC_URL = 'wss://testws.btse.io/spotWS'
 # Testnet
 BTSE_WSEndpoint = 'wss://testws.btse.io'
 BTSE_Endpoint = 'https://testapi.btse.io/spot/api/v3.2/'
+
+# REST_URL = "https://api.btse.com/spot/api/v3.2/"
+REST_URL = BTSE_Endpoint
 
 # supported BTSE currencies
 CURRENCIES = [

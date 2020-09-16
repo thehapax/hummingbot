@@ -12,7 +12,8 @@ from typing import Optional, AsyncIterable, Any, List
 from websockets.exceptions import ConnectionClosed
 from hummingbot.logger import HummingbotLogger
 from hummingbot.connector.exchange.btse.btse_auth import BtseAuth
-from hummingbot.connector.exchange.btse.btse_utils import RequestId, get_ms_timestamp
+from hummingbot.connector.exchange.btse.btse_utils import RequestId
+from hummingbot.connector.exchange.btse.btse_periodic_checker import BtsePeriodicChecker
 
 # reusable websocket class
 
@@ -28,13 +29,23 @@ class BtseWebsocket(RequestId):
             cls._logger = logging.getLogger(__name__)
         return cls._logger
 
+    @classmethod
+    def is_json(cls, myjson) -> bool:
+        try:
+            ujson.loads(myjson)
+        except ValueError:
+            return False
+        return True
+
     def __init__(self, auth: Optional[BtseAuth] = None):
         self._auth: Optional[BtseAuth] = auth
         self._isPrivate = True if self._auth is not None else False
         self._WS_URL = constants.WSS_PRIVATE_URL if self._isPrivate else constants.WSS_PUBLIC_URL
         self._client: Optional[websockets.WebSocketClientProtocol] = None
+        self._ping_checker = BtsePeriodicChecker(period_ms = 8 * 1000)
 
     # connect to exchange
+
     async def connect(self):
         try:
             self._client = await websockets.connect(self._WS_URL)
@@ -42,7 +53,7 @@ class BtseWebsocket(RequestId):
             # if auth class was passed into websocket class
             # we need to emit authenticated requests
             if self._isPrivate:
-                await self._emit("public/auth", None)
+                await self._emit('authKeyExpires', None)
                 # TODO: wait for response
                 await asyncio.sleep(1)
 
@@ -63,11 +74,19 @@ class BtseWebsocket(RequestId):
             while True:
                 try:
                     raw_msg_str: str = await asyncio.wait_for(self._client.recv(), timeout=self.MESSAGE_TIMEOUT)
-                    raw_msg = ujson.loads(raw_msg_str)
-                    if "method" in raw_msg and raw_msg["method"] == "public/heartbeat":
-                        payload = {"id": raw_msg["id"], "method": "public/respond-heartbeat"}
+                    raw_msg = None
+                    # Heartbeat keep alive response
+                    if self._ping_checker.check():
+                        payload = {"op": "ping"}
+                        print("==== Keep Alive HEART BEAT === sending a ping: " + str(payload))
                         safe_ensure_future(self._client.send(ujson.dumps(payload)))
-                    yield raw_msg
+                        # await self._client.send(ujson.dumps(payload))
+
+                    # Ignore non dict messages, unless auth check (Todo)
+                    if self.is_json(raw_msg_str):
+                        raw_msg = ujson.loads(raw_msg_str)
+                        print("inside _messages: " + str(raw_msg))
+                        yield raw_msg
                 except asyncio.TimeoutError:
                     await asyncio.wait_for(self._client.ping(), timeout=self.PING_TIMEOUT)
         except asyncio.TimeoutError:
@@ -79,49 +98,38 @@ class BtseWebsocket(RequestId):
             await self.disconnect()
 
     # emit messages
-    async def _emit(self, method: str, data: Optional[Any] = {}) -> int:
+    async def _emit(self, op: str, data: Optional[Any] = {}) -> int:
         id = self.generate_request_id()
-        nonce = get_ms_timestamp()
-
         payload = {
-            "id": id,
-            "method": method,
-            "nonce": nonce,
-            "params": copy.deepcopy(data),
+            "op": op,
+            "args": copy.deepcopy(data),
         }
-
-        if self._isPrivate:
+        if self._isPrivate and op == 'authKeyExpires':
+            print("====== GENERATING PRIVATE WSS PAYLOAD for BTSE WEBSOCKET =====")
             auth = self._auth.generate_auth_dict(
-                method,
-                request_id=id,
-                nonce=nonce,
+                uri='/spotWS',
                 data=data,
             )
+            payload['op'] = 'authKeyExpires'
+            payload['args'] = auth['args']
 
-            payload["sig"] = auth["sig"]
-            payload["api_key"] = auth["api_key"]
-
+        print(str(payload))
         await self._client.send(ujson.dumps(payload))
-
         return id
 
     # request via websocket
-    async def request(self, method: str, data: Optional[Any] = {}) -> int:
-        return await self._emit(method, data)
+    async def request(self, op: str, data: Optional[Any] = {}) -> int:
+        return await self._emit(op, data)
 
-    # subscribe to a method
+    # subscribe to an op
     async def subscribe(self, channels: List[str]) -> int:
-        return await self.request("subscribe", {
-            "channels": channels
-        })
+        return await self.request("subscribe", channels)
 
-    # unsubscribe to a method
+    # unsubscribe to an op
     async def unsubscribe(self, channels: List[str]) -> int:
-        return await self.request("unsubscribe", {
-            "channels": channels
-        })
+        return await self.request("unsubscribe", channels)
 
-    # listen to messages by method
+    # listen to messages by op
     async def on_message(self) -> AsyncIterable[Any]:
         async for msg in self._messages():
             yield msg
