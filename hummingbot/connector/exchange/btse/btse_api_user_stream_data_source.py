@@ -38,13 +38,13 @@ class BtseAPIUserStreamDataSource(UserStreamTrackerDataSource):
         """
         Subscribe to active orders via web socket
         """
-
         try:
             ws = BtseWebsocket(self._btse_auth)
             await ws.connect()
-            await ws.subscribe(["user.order", "user.trade", "user.balance"])
+            await ws.subscribe(["notificationApi"])
+            print("Websocket subscribe to notifications api")
             async for msg in ws.on_message():
-                # print(f"WS_SOCKET: {msg}")
+                print(f"WS_SOCKET: {msg}")
                 yield msg
                 self._last_recv_time = time.time()
                 if (msg.get("result") is None):
@@ -65,6 +65,7 @@ class BtseAPIUserStreamDataSource(UserStreamTrackerDataSource):
 
         while True:
             try:
+                print("inside listen for user stream")
                 async for msg in self._listen_to_orders_trades_balances():
                     output.put_nowait(msg)
             except asyncio.CancelledError:

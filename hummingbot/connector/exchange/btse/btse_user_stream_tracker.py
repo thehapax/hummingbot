@@ -22,13 +22,13 @@ from hummingbot.connector.exchange.btse.btse_constants import EXCHANGE_NAME
 
 
 class BtseUserStreamTracker(UserStreamTracker):
-    _cbpust_logger: Optional[HummingbotLogger] = None
+    _btseust_logger: Optional[HummingbotLogger] = None
 
     @classmethod
     def logger(cls) -> HummingbotLogger:
-        if cls._bust_logger is None:
-            cls._bust_logger = logging.getLogger(__name__)
-        return cls._bust_logger
+        if cls._btust_logger is None:
+            cls._btust_logger = logging.getLogger(__name__)
+        return cls._btust_logger
 
     def __init__(self,
                  btse_auth: Optional[BtseAuth] = None,
