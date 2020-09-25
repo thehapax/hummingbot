@@ -106,15 +106,38 @@ class BtseOrderBook(OrderBook):
         :param record: a trade data from the database
         :return: BtseOrderBookMessage
         """
+        '''  if the trade data is public this is format
+        {
+            "topic": "tradeHistoryApi:BTC-USD",
+            "data": [
+            {
+            "symbol": "BTC-USD",
+            "side": "SELL",
+            "size": 0.007,
+            "price": 5302.8,
+            "tradeId": 118974855,
+            "timestamp": 1584446020295
+            }]
+        }
+        '''
 
         if metadata:
             msg.update(metadata)
 
+        # TODO for message -fix the msg.get to work with btse
+        ''' example from crypto.com
         msg.update({
             "exchange_order_id": msg.get("d"),
             "trade_type": msg.get("s"),
             "price": msg.get("p"),
             "amount": msg.get("q"),
+        })
+        '''
+        msg.update({
+            "exchange_order_id": msg.get("tradeId"),
+            "trade_type": msg.get("side"),
+            "price": msg.get("price"),
+            "amount": msg.get("size"),
         })
 
         return BtseOrderBookMessage(

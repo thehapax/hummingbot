@@ -45,10 +45,17 @@ class RequestId:
         return get_tracking_nonce()
 
 
+# example: 'orderBookApi:BTC-USD_5' to 'BTC-USD'
+def get_symbol_from_topic(topic: str) -> str:
+    return topic.split(':').pop().split('_')[0]
+
+
+# not needed for BTSE
 def convert_from_exchange_trading_pair(exchange_trading_pair: str) -> str:
     return exchange_trading_pair.replace("_", "-")
 
 
+# not needed for BTSE
 def convert_to_exchange_trading_pair(hb_trading_pair: str) -> str:
     return hb_trading_pair.replace("-", "_")
 
