@@ -52,6 +52,7 @@ class BtseOrderBookTracker(OrderBookTracker):
         """
         Update an order book with changes from the latest batch of received messages
         """
+        print("==== inside _track_single_book in btse_order_book_tracker =====")
         past_diffs_window: Deque[BtseOrderBookMessage] = deque()
         self._past_diffs_windows[trading_pair] = past_diffs_window
 
@@ -73,6 +74,7 @@ class BtseOrderBookTracker(OrderBookTracker):
                     message = await message_queue.get()
 
                 if message.type is OrderBookMessageType.DIFF:
+                    print(">>>>>> inside message.type is OrderBookMessage.Type.DIFF  <<<<<<<")
                     bids, asks = active_order_tracker.convert_diff_message_to_order_book_row(message)
                     order_book.apply_diffs(bids, asks, message.update_id)
                     past_diffs_window.append(message)
@@ -88,6 +90,7 @@ class BtseOrderBookTracker(OrderBookTracker):
                         diff_messages_accepted = 0
                     last_message_timestamp = now
                 elif message.type is OrderBookMessageType.SNAPSHOT:
+                    print(">>>>>> inside message.type is OrderBookMessage.Type.SNAPSHOT  <<<<<<<")
                     past_diffs: List[BtseOrderBookMessage] = list(past_diffs_window)
                     # only replay diffs later than snapshot, first update active order with snapshot then replay diffs
                     replay_position = bisect.bisect_right(past_diffs, message)

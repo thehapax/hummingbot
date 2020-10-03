@@ -13,7 +13,7 @@ from hummingbot.core.data_type.order_book_tracker_data_source import OrderBookTr
 from hummingbot.core.utils.async_utils import safe_gather
 from hummingbot.logger import HummingbotLogger
 from . import btse_utils
-# from .btse_active_order_tracker import BtseActiveOrderTracker
+from .btse_active_order_tracker import BtseActiveOrderTracker
 from .btse_order_book import BtseOrderBook
 from .btse_websocket import BtseWebsocket
 from .btse_utils import ms_timestamp_to_s
@@ -59,6 +59,17 @@ class BtseAPIOrderBookDataSource(OrderBookTrackerDataSource):
     async def get_order_book_data(trading_pair: str) -> Dict[str, any]:
         """
         Get whole orderbook
+        sample:
+        {   'buyQuote': [   {'price': '10232.0', 'size': '0.308'},
+                    {'price': '10230.5', 'size': '0.199'},
+                    {'price': '10228.5', 'size': '0.930'},
+                    {'price': '2565.5', 'size': '0.100'}],
+            'sellQuote': [   {'price': '29850.0', 'size': '1.892'},
+                     {'price': '10234.0', 'size': '0.110'},
+                     {'price': '10233.5', 'size': '0.302'}],
+            'symbol': 'BTC-USD',
+            'timestamp': 1600897059891}
+
         """
         async with aiohttp.ClientSession() as client:
             orderbook_response = await client.get(
@@ -73,6 +84,10 @@ class BtseAPIOrderBookDataSource(OrderBookTrackerDataSource):
                 )
 
             orderbook_data: List[Dict[str, Any]] = await safe_gather(orderbook_response.json())
+
+        return orderbook_data
+
+        ''''
             bids = []
             asks = []
             for i in orderbook_data['buyQuote']:
@@ -84,6 +99,7 @@ class BtseAPIOrderBookDataSource(OrderBookTrackerDataSource):
             ob['bids'] = bids
             ob['asks'] = asks
         return ob
+        '''
 
     # todo -  don't need deep converter for active order tracker, only simple dict to list
     async def get_new_order_book(self, trading_pair: str) -> OrderBook:
@@ -95,10 +111,10 @@ class BtseAPIOrderBookDataSource(OrderBookTrackerDataSource):
             metadata={"trading_pair": trading_pair}
         )
         order_book = self.order_book_create_function()
-        # active_order_tracker: BtseActiveOrderTracker = BtseActiveOrderTracker()
-        # bids, asks = active_order_tracker.convert_snapshot_message_to_order_book_row(snapshot_msg)
-        bids = snapshot['bids']
-        asks = snapshot['asks']
+        active_order_tracker: BtseActiveOrderTracker = BtseActiveOrderTracker()
+        bids, asks = active_order_tracker.convert_snapshot_message_to_order_book_row(snapshot_msg)
+        # bids = snapshot['bids']
+        # asks = snapshot['asks']
         order_book.apply_snapshot(bids, asks, snapshot_msg.update_id)
         return order_book
 

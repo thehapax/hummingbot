@@ -26,6 +26,7 @@ class BtseOrderBookTrackerUnitTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
+        print("inside setUpClass")
         cls.ev_loop: asyncio.BaseEventLoop = asyncio.get_event_loop()
         cls.order_book_tracker: BtseOrderBookTracker = BtseOrderBookTracker(cls.trading_pairs)
         cls.order_book_tracker.start()
@@ -33,13 +34,18 @@ class BtseOrderBookTrackerUnitTest(unittest.TestCase):
 
     @classmethod
     async def wait_til_tracker_ready(cls):
+        print("inside wait til tracker ready")
         while True:
+            print("======= Checking if order books initialized =========")
+            print(str(cls.order_book_tracker.exchange_name))
+            print(str(cls.order_book_tracker.order_books))
             if len(cls.order_book_tracker.order_books) > 0:
                 print("Initialized real-time order books.")
                 return
             await asyncio.sleep(1)
 
     async def run_parallel_async(self, *tasks, timeout=None):
+        print(" ====== inside run_parallel_async =======")
         future: asyncio.Future = asyncio.ensure_future(asyncio.gather(*tasks))
         timer = 0
         while not future.done():
@@ -52,9 +58,11 @@ class BtseOrderBookTrackerUnitTest(unittest.TestCase):
         return future.result()
 
     def run_parallel(self, *tasks):
+        print("inside run_parallel")
         return self.ev_loop.run_until_complete(self.run_parallel_async(*tasks))
 
     def setUp(self):
+        print("inside setUp")
         self.event_logger = EventLogger()
         for event_tag in self.events:
             for trading_pair, order_book in self.order_book_tracker.order_books.items():
@@ -65,6 +73,7 @@ class BtseOrderBookTrackerUnitTest(unittest.TestCase):
         Tests if the order book tracker is able to retrieve order book trade message from exchange and emit order book
         trade events after correctly parsing the trade messages
         """
+        print("Inside Test_order_book_trade_event_emission")
         self.run_parallel(self.event_logger.wait_for(OrderBookTradeEvent))
         for ob_trade_event in self.event_logger.event_log:
             self.assertTrue(type(ob_trade_event) == OrderBookTradeEvent)
@@ -79,6 +88,7 @@ class BtseOrderBookTrackerUnitTest(unittest.TestCase):
             self.assertTrue(ob_trade_event.price > 0)
 
     def test_tracker_integrity(self):
+        print("inside test_tracker_integrity")
         # Wait 5 seconds to process some diffs.
         self.ev_loop.run_until_complete(asyncio.sleep(10.0))
         order_books: Dict[str, OrderBook] = self.order_book_tracker.order_books
@@ -90,6 +100,7 @@ class BtseOrderBookTrackerUnitTest(unittest.TestCase):
                              eth_usdt.get_price(False))
 
     def test_api_get_last_traded_prices(self):
+        print("inside test_api_get_last_traded_prices")
         prices = self.ev_loop.run_until_complete(
             BtseAPIOrderBookDataSource.get_last_traded_prices(["BTC-USDT", "LTC-BTC"]))
         for key, value in prices.items():

@@ -3,6 +3,17 @@ import math
 from typing import Dict, List
 from hummingbot.core.utils.tracking_nonce import get_tracking_nonce, get_tracking_nonce_low_res
 import hummingbot.connector.exchange.btse.btse_constants as Constants
+import ujson
+
+
+# check if the string  is a json
+def is_json(myjson):
+    try:
+        json_object = ujson.loads(myjson)
+        if json_object:
+            return True
+    except ValueError:
+        return False
 
 
 # deeply merge two dictionaries
