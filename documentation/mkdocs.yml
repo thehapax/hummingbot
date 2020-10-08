@@ -150,6 +150,7 @@ nav:
       - Overview: connectors/index.md
       - Binance: connectors/binance.md
       - Bittrex Global: connectors/bittrex.md
+      - Btse : connectors/btse.md
       - Coinbase Pro: connectors/coinbase.md
       - Crypto.com : connectors/crypto-com.md
       - Eterbase: connectors/eterbase.md
