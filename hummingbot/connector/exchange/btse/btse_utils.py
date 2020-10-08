@@ -1,4 +1,4 @@
-# from crypto_com utils
+# copied from crypto_com utils - TODO make sure remove unused methods
 import math
 from typing import Dict, List
 from hummingbot.core.utils.tracking_nonce import get_tracking_nonce, get_tracking_nonce_low_res

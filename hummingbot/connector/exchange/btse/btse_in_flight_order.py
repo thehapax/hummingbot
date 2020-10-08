@@ -37,15 +37,15 @@ class BtseInFlightOrder(InFlightOrderBase):
 
     @property
     def is_done(self) -> bool:
-        return self.last_state in {"FILLED", "CANCELED", "REJECTED", "EXPIRED"}
+        return self.last_state in {"ORDER_FULLY_TRANSACTED", "ORDER_PARTIALLY_TRANSACTED"}
 
     @property
     def is_failure(self) -> bool:
-        return self.last_state in {"REJECTED"}
+        return self.last_state in {"ORDER_REJECTED", "INSUFFICIENT_BALANCE"}
 
     @property
     def is_cancelled(self) -> bool:
-        return self.last_state in {"CANCELED", "EXPIRED"}
+        return self.last_state in {"ORDER_CANCELLED", "ORDER_NOTFOUND"}
 
     # @property
     # def order_type_description(self) -> str:

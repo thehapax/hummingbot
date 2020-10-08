@@ -106,7 +106,7 @@ class BtseOrderBook(OrderBook):
         :param record: a trade data from the database
         :return: BtseOrderBookMessage
         """
-        '''  if the trade data is public this is format
+        '''  if the trade data is public this is format - last 50 recent, plus updates
         {
             "topic": "tradeHistoryApi:BTC-USD",
             "data": [
@@ -124,15 +124,7 @@ class BtseOrderBook(OrderBook):
         if metadata:
             msg.update(metadata)
 
-        # TODO for message -fix the msg.get to work with btse
-        ''' example from crypto.com
-        msg.update({
-            "exchange_order_id": msg.get("d"),
-            "trade_type": msg.get("s"),
-            "price": msg.get("p"),
-            "amount": msg.get("q"),
-        })
-        '''
+        # TODO check if valid for btse
         msg.update({
             "exchange_order_id": msg.get("tradeId"),
             "trade_type": msg.get("side"),

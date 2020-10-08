@@ -57,9 +57,6 @@ BTSE_ENUM = {
     1004: "ORDER_ADL"
 }
 
-# do we need this? or is it just BTSE_ENUM
-API_REASONS = BTSE_ENUM
-
 API_STATUS = {
     200: "API request was successful, refer to the specific API response for expected payload",
     400: "Bad Request. Server will not process this request. This is usually due to invalid parameters sent in request",
@@ -67,11 +64,17 @@ API_STATUS = {
     403: "Forbidden request. Credentials were provided but they were insufficient to perform the request",
     404: "Not found. Indicates that the server understood the request but could not find a correct representation for the target resource",
     405: "Method not allowed. Indicates that the request method is not known to the requested server",
-    408: "Request timeout. Indicates that the server did not complete the request. BTSE API timeouts are set at 30secs",
+    408: "Request timeout. Indicates that thAe server did not complete the request. BTSE API timeouts are set at 30secs",
     429: "Too many requests. Indicates that the client has exceeded the rates limits set by the server. Refer to Rate Limits for more details",
     500: "Internal server error. Indicates that the server encountered an unexpected condition resulting in not being able to fulfill the request",
     503: "Service Unavailable"
 }
+
+# do we need this API_STATUS or is it just BTSE_ENUM
+API_REASONS = BTSE_ENUM
+
+# merge two dicts into 1
+API_REASONS.update(API_STATUS)
 
 # https://support.btse.com/en/support/solutions/articles/43000533815-spot-trading-limits
 BASE_ORDER_MIN = {
