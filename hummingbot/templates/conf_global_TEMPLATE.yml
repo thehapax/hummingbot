@@ -35,6 +35,9 @@ kraken_secret_key: null
 crypto_com_api_key: null
 crypto_com_secret_key: null
 
+btse_api_key: null
+btse_secret_key: null
+
 eterbase_api_key: null
 eterbase_secret_key: null
 eterbase_account: null

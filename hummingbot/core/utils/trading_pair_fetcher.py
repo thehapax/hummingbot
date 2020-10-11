@@ -25,6 +25,7 @@ DOLOMITE_ENDPOINT = "https://exchange-api.dolomite.io/v1/markets"
 ETERBASE_ENDPOINT = "https://api.eterbase.exchange/api/markets"
 KRAKEN_ENDPOINT = "https://api.kraken.com/0/public/AssetPairs"
 CRYPTO_COM_ENDPOINT = "https://api.crypto.com/v2/public/get-ticker"
+BTSE_ENDPOINT = "https://api.btse.com/spot/api/v3.2/price"
 
 API_CALL_TIMEOUT = 5
 
@@ -261,6 +262,20 @@ class TradingPairFetcher:
                         # Do nothing if the request fails -- there will be no autocomplete for kucoin trading pairs
                 return []
 
+    # method should work  - todo : cross check
+    @staticmethod
+    async def fetch_btse_trading_pairs() -> List[str]:
+        try:
+            client: aiohttp.ClientSession = TradingPairFetcher.http_client()
+            async with client.get(BTSE_ENDPOINT, timeout=API_CALL_TIMEOUT) as response:
+                if response.status == 200:
+                    all_trading_pairs: List[Dict[str, Any]] = await response.json()
+                    return [item["symbol"] for item in all_trading_pairs]
+        except Exception:
+            pass
+            # Do nothing if the request fails -- there will be no autocomplete for kucoin trading pairs
+        return []
+
     @staticmethod
     async def fetch_kucoin_trading_pairs() -> List[str]:
         async with aiohttp.ClientSession() as client:
@@ -335,7 +350,8 @@ class TradingPairFetcher:
                  self.fetch_kraken_trading_pairs(),
                  self.fetch_radar_relay_trading_pairs(),
                  self.fetch_eterbase_trading_pairs(),
-                 self.fetch_crypto_com_trading_pairs()]
+                 self.fetch_crypto_com_trading_pairs(),
+                 self.fetch_btse_trading_pairs()]
 
         # Radar Relay has not yet been migrated to a new version
         # Endpoint needs to be updated after migration
@@ -354,6 +370,7 @@ class TradingPairFetcher:
             "kraken": results[8],
             "radar_relay": results[9],
             "eterbase": results[10],
-            "crypto_com": results[11]
+            "crypto_com": results[11],
+            "btse": results[12],
         }
         self.ready = True

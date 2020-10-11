@@ -12,6 +12,8 @@ LIQUID_PRICE_URL = "https://api.liquid.com/products"
 BITTREX_PRICE_URL = "https://api.bittrex.com/api/v1.1/public/getmarketsummaries"
 KRAKEN_PRICE_URL = "https://api.kraken.com/0/public/Ticker?pair="
 COINBASE_PRO_PRICE_URL = "https://api.pro.coinbase.com/products/TO_BE_REPLACED/ticker"
+# BTSE_PRICE_URL = "https://api.btse.com/0/public/Ticker?pair="
+# fix this  - TODO is this needed for BTSE?
 
 
 def get_mid_price(exchange: str, trading_pair: str) -> Optional[Decimal]:
