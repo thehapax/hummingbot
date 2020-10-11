@@ -46,6 +46,7 @@ from hummingbot.client.config.security import Security
 
 from hummingbot.connector.exchange_base import ExchangeBase
 from hummingbot.connector.exchange.crypto_com.crypto_com_exchange import CryptoComExchange
+from hummingbot.connector.exchange.btse.btse_exchange import BtseExchange
 from hummingbot.core.utils.trading_pair_fetcher import TradingPairFetcher
 
 s_logger = None
@@ -333,6 +334,12 @@ class HummingbotApplication(*commands):
                 market = CryptoComExchange(api_key, secret_key,
                                            trading_pairs=trading_pairs,
                                            trading_required=self._trading_required)
+            elif market_name == "btse":
+                api_key = global_config_map.get("btse_api_key").value
+                secret_key = global_config_map.get("btse_secret_key").value
+                market = BtseExchange(api_key, secret_key,
+                                      trading_pairs=trading_pairs,
+                                      trading_required=self._trading_required)
             else:
                 raise ValueError(f"Market name {market_name} is invalid.")
 
