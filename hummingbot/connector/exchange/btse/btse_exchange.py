@@ -553,7 +553,8 @@ class BtseExchange(ExchangeBase):
                 await self._poll_notifier.wait()
                 await safe_gather(
                     self._update_balances(),  # done 10/8/20
-                    self._update_order_status(),  # todo
+                    self._update_order_status(),  # rest api trade history
+                    # todo - need to add rest version for open orders
                 )
                 self._last_poll_timestamp = self.current_timestamp
             except asyncio.CancelledError:
@@ -599,37 +600,82 @@ class BtseExchange(ExchangeBase):
             for tracked_order in tracked_orders:
                 order_id = await tracked_order.get_exchange_order_id()
                 tasks.append(self._api_request("post",
-                                               "private/get-order-detail",
-                                               {"order_id": order_id},
+                                               "user/trade_history",
+                                               {"orderId": order_id,
+                                                "startTime": self._last_poll_timestamp},
                                                True))
-            #  todo - private/get-order-detail - no equivalent in btse
             self.logger().debug(f"Polling for order status updates of {len(tasks)} orders.")
             update_results = await safe_gather(*tasks, return_exceptions=True)
 
             for update_result in update_results:
                 if isinstance(update_result, Exception):
                     raise update_result
-                if "result" not in update_result:
+                if not update_result:
                     self.logger().info(f"_update_order_status result not in resp: {update_result}")
                     continue
-                for trade_msg in update_result["result"]["trade_list"]:
+                for trade_msg in update_result:
                     await self._process_trade_message(trade_msg)
-                    # for btse, do from websockets only?
-                self._process_order_message(update_result["result"]["order_info"])
-                # _process_order - handles closed orders only
+                    # for btse, filled completed orders with fees (tradehistory)
+#                self._process_order_message(update_result["result"]["order_info"])
+                # _process_order -  open orders or notificationAPI
 
     # todo - for btse
     def _process_order_message(self, order_msg: Dict[str, Any]):
         """
         Updates in-flight order and triggers cancellation or failure event if needed.
         :param order_msg: The order response from either REST or web socket API (if they are of the same format)
+
+        example from notificationsAPI websocket:
+        {   'averageFillPrice': 0.0,
+                'clOrderID': 'MYOWNORDERID',
+                'fillSize': 0.0,
+                'orderID': '01d9a550-4acd-4f12-990f-ef496f325a7b',
+                'orderMode': 'MODE_BUY', # inconsistent w/REST
+                'orderType': 'TYPE_LIMIT', # inconsistent with REST API
+                'pegPriceDeviation': 1.0,
+                'price': 7010.0,
+                'size': 0.002,
+                'status': 'ORDER_INSERTED',
+                'stealth': 1.0,
+                'symbol': 'BTC-USD',
+                'timestamp': 1602229225728,
+                'triggerPrice': 7010.0,
+                'type': ''},
+
+        example from open orders Rest API:
+        {   'averageFillPrice': 0.0,
+        'cancelDuration': 0,
+        'clOrderID': 'MYOWNORDERID2',
+        'fillSize': 0.0,
+        'filledSize': 0.0,
+        'orderID': 'cb2d5a05-357d-425a-b965-789d2727fb5a',
+        'orderState': 'STATUS_ACTIVE',
+        'orderType': 76, # 76 is for limit order
+        'orderValue': 14.1,
+        'pegPriceDeviation': 0.0,
+        'pegPriceMax': 0.0,
+        'pegPriceMin': 0.0,
+        'price': 7050.0,
+        'side': 'BUY',
+        'size': 0.002,
+        'symbol': 'BTC-USD',
+        'timestamp': 1602376422318,
+        'trailValue': 0.0,
+        'triggerOrder': False,
+        'triggerOrderType': 0,
+        'triggerOriginalPrice': 0.0,
+        'triggerPrice': 0.0,
+        'triggerStopPrice': 0.0,
+        'triggerTrailingStopDeviation': 0.0,
+        'triggered': False},
+
         """
         client_order_id = order_msg["clOrderID"]
         if client_order_id not in self._in_flight_orders:
             return
         tracked_order = self._in_flight_orders[client_order_id]
         # Update order execution status
-        tracked_order.last_state = order_msg["status"]  # TODO: fix this status message
+        tracked_order.last_state = order_msg["status"]  # websocket or REST: order_msg['orderState']
         if tracked_order.is_cancelled:
             self.logger().info(f"Successfully cancelled order {client_order_id}.")
             self.trigger_event(MarketEvent.OrderCancelled,
@@ -638,7 +684,7 @@ class BtseExchange(ExchangeBase):
                                    client_order_id))
             tracked_order.cancelled_event.set()
             self.stop_tracking_order(client_order_id)
-        elif tracked_order.is_failure:  # TODO: fix
+        elif tracked_order.is_failure:
             self.logger().info(f"The market order {client_order_id} has failed according to order status API. "
                                f"Reason: {btse_utils.get_api_reason(order_msg['status'])}")
             # status code in API_STATUS or BTSE_ENUM
@@ -655,33 +701,39 @@ class BtseExchange(ExchangeBase):
         """
         Updates in-flight order and trigger order filled event for trade message received. Triggers order completed
         event if the total executed amount equals to the specified order amount.
-        example from notificationsAPI
-        {   'averageFillPrice': 0.0,
-                'clOrderID': 'MYOWNORDERID',
-                'fillSize': 0.0,
-                'orderID': '01d9a550-4acd-4f12-990f-ef496f325a7b',
-                'orderMode': 'MODE_BUY',
-                'orderType': 'TYPE_LIMIT',
-                'pegPriceDeviation': 1.0,
-                'price': 7010.0,
-                'size': 0.002,
-                'status': 'ORDER_INSERTED',
-                'stealth': 1.0,
-                'symbol': 'BTC-USD',
-                'timestamp': 1602229225728,
-                'triggerPrice': 7010.0,
-                'type': ''},
+        example trade history from REST API:
+          {   'base': 'BTC',
+        'clOrderID': None,
+        'feeAmount': 2e-06,
+        'feeCurrency': 'BTC',
+        'filledPrice': 10758.0,
+        'filledSize': 0.002,
+        'orderId': 'b3a65f8e-e838-4c13-adf4-62fef98504a1',
+        'orderType': 77,
+        'price': 21.516,
+        'quote': 'USD',
+        'realizedPnl': 0.0,
+        'serialId': 110947333,
+        'side': 'BUY',
+        'size': 21.516,
+        'symbol': 'BTC-USD',
+        'timestamp': 1601791330000,
+        'total': 0.0,
+        'tradeId': '1c062ffa-0386-4d63-8cff-c6f4de05a270',
+        'triggerPrice': 0.0,
+        'triggerType': 0,
+        'username': 'hapax10test',
+        'wallet': 'SPOT@'},
         """
         for order in self._in_flight_orders.values():
             await order.get_exchange_order_id()
-        track_order = [o for o in self._in_flight_orders.values() if trade_msg["orderID"] == o.exchange_order_id]
+        track_order = [o for o in self._in_flight_orders.values() if trade_msg["orderId"] == o.exchange_order_id]
         if not track_order:
             return
         tracked_order = track_order[0]
         updated = tracked_order.update_with_trade_update(trade_msg)
         if not updated:
             return
-        fee_currency = btse_utils.get_base(trade_msg['symbol'])
         self.trigger_event(
             MarketEvent.OrderFilled,
             OrderFilledEvent(
@@ -692,13 +744,13 @@ class BtseExchange(ExchangeBase):
                 tracked_order.order_type,
                 Decimal(str(trade_msg["price"])),
                 Decimal(str(trade_msg["size"])),
-                TradeFee(0.0, [(fee_currency, 0.0)]),  # temporarily make fee zero
+                TradeFee(0.0, [(trade_msg["feeCurrency"], Decimal(str(trade_msg["feeAmount"])))]),
                 exchange_trade_id=trade_msg["orderID"]
             )
         )
         if math.isclose(tracked_order.executed_amount_base, tracked_order.amount) or \
                 tracked_order.executed_amount_base >= tracked_order.amount:
-            tracked_order.last_state = "ORDER_FULLY_TRANSACTED"  # ORDER_PARTIALLY_TRANSACTED-???
+            tracked_order.last_state = "ORDER_FULLY_TRANSACTED"  # ORDER_PARTIALLY_TRANSACTED?
             self.logger().info(f"The {tracked_order.trade_type.name} order "
                                f"{tracked_order.client_order_id} has completed "
                                f"according to order status API.")
@@ -805,7 +857,7 @@ class BtseExchange(ExchangeBase):
                 if "notificationApi" not in event_message["topic"]:
                     continue
                 for trade_msg in event_message["data"]:
-                    await self._process_trade_message(trade_msg)
+                    await self._process_order_message(trade_msg)  # websocket ongoing order messages
 
             except asyncio.CancelledError:
                 raise

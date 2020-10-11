@@ -36,13 +36,16 @@ class BtseInFlightOrder(InFlightOrderBase):
         self.cancelled_event = asyncio.Event()
 
     # method is not used but here if needed in future
+    # other "status":
+    # websocket: ORDER_INSERTED, TRIGGER_ACTIVATED, TRIGGER_INSERTED
+    # Rest API "orderState": STATUS_ACTIVE
     @property
     def is_done(self) -> bool:
         return self.last_state in {"ORDER_FULLY_TRANSACTED", "ORDER_PARTIALLY_TRANSACTED"}
 
     @property
     def is_failure(self) -> bool:
-        return self.last_state in {"ORDER_REJECTED", "INSUFFICIENT_BALANCE"}
+        return self.last_state in {"ORDER_REJECTED", "INSUFFICIENT_BALANCE", "MARKET_UNAVAILABLE"}
 
     @property
     def is_cancelled(self) -> bool:

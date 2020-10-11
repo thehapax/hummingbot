@@ -65,3 +65,5 @@ stash
 *.txt
 ~
 archive
+stash
+scratch
