@@ -630,8 +630,8 @@ class BtseExchange(ExchangeBase):
                 'clOrderID': 'MYOWNORDERID',
                 'fillSize': 0.0,
                 'orderID': '01d9a550-4acd-4f12-990f-ef496f325a7b',
-                'orderMode': 'MODE_BUY', # inconsistent w/REST
-                'orderType': 'TYPE_LIMIT', # inconsistent with REST API
+                'orderMode': 'MODE_BUY',
+                'orderType': 'TYPE_LIMIT',
                 'pegPriceDeviation': 1.0,
                 'price': 7010.0,
                 'size': 0.002,
@@ -641,8 +641,9 @@ class BtseExchange(ExchangeBase):
                 'timestamp': 1602229225728,
                 'triggerPrice': 7010.0,
                 'type': ''},
+                'topic': 'notificationApiV1'}
 
-        example from open orders Rest API:
+        example from open orders Rest API:  - Todo
         {   'averageFillPrice': 0.0,
         'cancelDuration': 0,
         'clOrderID': 'MYOWNORDERID2',
