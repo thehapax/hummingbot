@@ -35,6 +35,7 @@ class BtseInFlightOrder(InFlightOrderBase):
         self.trade_id_set = set()
         self.cancelled_event = asyncio.Event()
 
+    # method is not used but here if needed in future
     @property
     def is_done(self) -> bool:
         return self.last_state in {"ORDER_FULLY_TRANSACTED", "ORDER_PARTIALLY_TRANSACTED"}

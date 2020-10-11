@@ -6,6 +6,16 @@ import hummingbot.connector.exchange.btse.btse_constants as Constants
 import ujson
 
 
+def get_base(symbol):
+    pairs = symbol.split('-')
+    return pairs[0]
+
+
+def get_quote(symbol):
+    pairs = symbol.split('-')
+    return pairs[1]
+
+
 # check if the string  is a json
 def is_json(myjson):
     try:
@@ -59,16 +69,6 @@ class RequestId:
 # example: 'orderBookApi:BTC-USD_5' to 'BTC-USD'
 def get_symbol_from_topic(topic: str) -> str:
     return topic.split(':').pop().split('_')[0]
-
-
-# not needed for BTSE
-def convert_from_exchange_trading_pair(exchange_trading_pair: str) -> str:
-    return exchange_trading_pair.replace("_", "-")
-
-
-# not needed for BTSE
-def convert_to_exchange_trading_pair(hb_trading_pair: str) -> str:
-    return hb_trading_pair.replace("-", "_")
 
 
 def get_new_client_order_id(is_buy: bool, trading_pair: str) -> str:
