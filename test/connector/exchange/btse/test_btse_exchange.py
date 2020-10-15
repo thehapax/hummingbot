@@ -35,7 +35,7 @@ from hummingbot.model.order import Order
 from hummingbot.model.trade_fill import TradeFill
 from hummingbot.connector.markets_recorder import MarketsRecorder
 from hummingbot.connector.exchange.btse.btse_exchange import BtseExchange
-from hummingbot.connector.exchange.btse.btse_constants import WSS_PUBLIC_URL, WSS_PRIVATE_URL
+from hummingbot.connector.exchange.btse.btse_constants import WSS_PRIVATE_URL  # WSS_PUBLIC_URL
 from test.integration.humming_web_app import HummingWebApp
 from test.integration.humming_ws_server import HummingWsServerFactory
 from . import fixture
@@ -44,7 +44,7 @@ logging.basicConfig(level=METRICS_LOG_LEVEL)
 API_MOCK_ENABLED = conf.mock_api_enabled is not None and conf.mock_api_enabled.lower() in ['true', 'yes', '1']
 API_KEY = "XXX" if API_MOCK_ENABLED else conf.btse_api_key
 API_SECRET = "YYY" if API_MOCK_ENABLED else conf.btse_secret_key
-BASE_API_URL = "api.btse.com"
+BASE_API_URL = "testapi.btse.io/spot"
 
 
 class BtseExchangeUnitTest(unittest.TestCase):
@@ -66,7 +66,7 @@ class BtseExchangeUnitTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        # where is Mainnet rpc url set?
+        # where is Mainnet rpc url set? unused variable here
         global MAINNET_RPC_URL
 
         cls.ev_loop = asyncio.get_event_loop()
@@ -80,14 +80,14 @@ class BtseExchangeUnitTest(unittest.TestCase):
             cls._url_mock = cls._patcher.start()
             cls._url_mock.side_effect = cls.web_app.reroute_local
             #  fix Base urls
-            cls.web_app.update_response("get", BASE_API_URL, "/v2/public/get-ticker", fixture.TICKERS)
-            cls.web_app.update_response("get", BASE_API_URL, "/v2/public/get-instruments", fixture.INSTRUMENTS)
-            cls.web_app.update_response("get", BASE_API_URL, "/v2/public/get-book", fixture.GET_BOOK)
-            cls.web_app.update_response("post", BASE_API_URL, "/v2/private/get-account-summary", fixture.BALANCES)
-            cls.web_app.update_response("post", BASE_API_URL, "/v2/private/cancel-order", fixture.CANCEL)
+            cls.web_app.update_response("get", BASE_API_URL, "/api/v3.2/price", fixture.TICKERS)
+            cls.web_app.update_response("get", BASE_API_URL, "/api/v3.2/market_summary", fixture.INSTRUMENTS)
+            cls.web_app.update_response("get", BASE_API_URL, "/api/v3.2/orderbook/L2", fixture.GET_BOOK)
+            cls.web_app.update_response("get", BASE_API_URL, "/api/v3.2/user/wallet", fixture.BALANCES)
+            cls.web_app.update_response("post", BASE_API_URL, "/api/v3.1/order", fixture.CANCEL)
 
             HummingWsServerFactory.start_new_server(WSS_PRIVATE_URL)
-            HummingWsServerFactory.start_new_server(WSS_PUBLIC_URL)
+            # HummingWsServerFactory.start_new_server(WSS_PUBLIC_URL)
             cls._ws_patcher = unittest.mock.patch("websockets.connect", autospec=True)
             cls._ws_mock = cls._ws_patcher.start()
             cls._ws_mock.side_effect = HummingWsServerFactory.reroute_ws_connect
@@ -103,10 +103,9 @@ class BtseExchangeUnitTest(unittest.TestCase):
         cls.clock.add_iterator(cls.connector)
         cls.stack: contextlib.ExitStack = contextlib.ExitStack()
         cls._clock = cls.stack.enter_context(cls.clock)
-        if API_MOCK_ENABLED:
-            HummingWsServerFactory.send_json_threadsafe(WSS_PRIVATE_URL, fixture.WS_INITIATED, delay=0.5)
-            HummingWsServerFactory.send_json_threadsafe(WSS_PRIVATE_URL, fixture.WS_SUBSCRIBE, delay=0.51)
-            HummingWsServerFactory.send_json_threadsafe(WSS_PRIVATE_URL, fixture.WS_HEARTBEAT, delay=0.52)
+        # if API_MOCK_ENABLED:
+        # btse has no heartbeat subscription
+        #    HummingWsServerFactory.send_json_threadsafe(WSS_PRIVATE_URL, fixture.WS_ORDERBOOK, delay=0.5)
         cls.ev_loop.run_until_complete(cls.wait_til_ready())
         print("Ready.")
 
@@ -165,30 +164,32 @@ class BtseExchangeUnitTest(unittest.TestCase):
         taker_fee = self.connector.estimate_fee_pct(False)
         self.assertAlmostEqual(taker_fee, Decimal("0.001"))
 
+# todo - test methods below.
     def _place_order(self, is_buy, amount, order_type, price, ex_order_id, get_order_fixture=None,
-                     ws_trade_fixture=None, ws_order_fixture=None) -> str:
+                     ws_order_filled=None, ws_order_inserted=None) -> str:
         if API_MOCK_ENABLED:
             data = fixture.PLACE_ORDER.copy()
-            data["result"]["order_id"] = str(ex_order_id)
-            self.web_app.update_response("post", BASE_API_URL, "/v2/private/create-order", data)
+            data["orderID"] = str(ex_order_id)
+            self.web_app.update_response("post", BASE_API_URL, "/api/v3.1/order", data)
         if is_buy:
             cl_order_id = self.connector.buy(self.trading_pair, amount, order_type, price)
         else:
             cl_order_id = self.connector.sell(self.trading_pair, amount, order_type, price)
         if API_MOCK_ENABLED:
-            if get_order_fixture is not None:
-                data = get_order_fixture.copy()
-                data["result"]["order_info"]["client_oid"] = cl_order_id
-                data["result"]["order_info"]["order_id"] = ex_order_id
-                self.web_app.update_response("post", BASE_API_URL, "/v2/private/get-order-detail", data)
-            if ws_trade_fixture is not None:
-                data = ws_trade_fixture.copy()
-                data["result"]["data"][0]["order_id"] = str(ex_order_id)
+            # todo fix - get open_order for REST API below for btse
+            #            if get_order_fixture is not None:
+            #                data = get_order_fixture.copy()
+            #                data["result"]["order_info"]["client_oid"] = cl_order_id
+            #                data["result"]["order_info"]["order_id"] = ex_order_id
+            #                self.web_app.update_response("post", BASE_API_URL, "/v2/private/get-order-detail", data)
+            if ws_order_filled is not None:
+                data = ws_order_filled.copy()
+                data[0]["data"]["orderID"] = str(ex_order_id)
                 HummingWsServerFactory.send_json_threadsafe(WSS_PRIVATE_URL, data, delay=0.1)
-            if ws_order_fixture is not None:
-                data = ws_order_fixture.copy()
-                data["result"]["data"][0]["order_id"] = str(ex_order_id)
-                data["result"]["data"][0]["client_oid"] = cl_order_id
+            if ws_order_inserted is not None:
+                data = ws_order_inserted.copy()
+                data[0]["data"]["orderID"] = str(ex_order_id)
+                data[0]["data"]["clOrderID"] = cl_order_id
                 HummingWsServerFactory.send_json_threadsafe(WSS_PRIVATE_URL, data, delay=0.12)
         return cl_order_id
 
@@ -196,71 +197,17 @@ class BtseExchangeUnitTest(unittest.TestCase):
         self.connector.cancel(self.trading_pair, cl_order_id)
         if API_MOCK_ENABLED:
             data = fixture.WS_ORDER_CANCELLED.copy()
-            data["result"]["data"][0]["client_oid"] = cl_order_id
+            data[0]["data"]["clOrderID"] = cl_order_id
             HummingWsServerFactory.send_json_threadsafe(WSS_PRIVATE_URL, data, delay=0.1)
 
-    def test_buy_and_sell(self):
-        price = self.connector.get_price(self.trading_pair, True) * Decimal("1.05")
-        price = self.connector.quantize_order_price(self.trading_pair, price)
-        amount = self.connector.quantize_order_amount(self.trading_pair, Decimal("0.0001"))
-        quote_bal = self.connector.get_available_balance(self.quote_token)
-        base_bal = self.connector.get_available_balance(self.base_token)
-
-        order_id = self._place_order(True, amount, OrderType.LIMIT, price, 1, None,
-                                     fixture.WS_TRADE)
-        order_completed_event = self.ev_loop.run_until_complete(self.event_logger.wait_for(BuyOrderCompletedEvent))
-        self.ev_loop.run_until_complete(asyncio.sleep(2))
-        trade_events = [t for t in self.event_logger.event_log if isinstance(t, OrderFilledEvent)]
-        base_amount_traded = sum(t.amount for t in trade_events)
-        quote_amount_traded = sum(t.amount * t.price for t in trade_events)
-
-        self.assertTrue([evt.order_type == OrderType.LIMIT for evt in trade_events])
-        self.assertEqual(order_id, order_completed_event.order_id)
-        self.assertEqual(amount, order_completed_event.base_asset_amount)
-        self.assertEqual("BTC", order_completed_event.base_asset)
-        self.assertEqual("USDT", order_completed_event.quote_asset)
-        self.assertAlmostEqual(base_amount_traded, order_completed_event.base_asset_amount)
-        self.assertAlmostEqual(quote_amount_traded, order_completed_event.quote_asset_amount)
-        self.assertGreater(order_completed_event.fee_amount, Decimal(0))
-        self.assertTrue(any([isinstance(event, BuyOrderCreatedEvent) and event.order_id == order_id
-                             for event in self.event_logger.event_log]))
-
-        # check available quote balance gets updated, we need to wait a bit for the balance message to arrive
-        expected_quote_bal = quote_bal - quote_amount_traded
-        self._mock_ws_bal_update(self.quote_token, expected_quote_bal)
-        self.ev_loop.run_until_complete(asyncio.sleep(1))
-        self.assertAlmostEqual(expected_quote_bal, self.connector.get_available_balance(self.quote_token))
-
-        # Reset the logs
-        self.event_logger.clear()
-
-        # Try to sell back the same amount to the exchange, and watch for completion event.
-        price = self.connector.get_price(self.trading_pair, True) * Decimal("0.95")
-        price = self.connector.quantize_order_price(self.trading_pair, price)
-        amount = self.connector.quantize_order_amount(self.trading_pair, Decimal("0.0001"))
-        order_id = self._place_order(False, amount, OrderType.LIMIT, price, 2, None,
-                                     fixture.WS_TRADE)
-        order_completed_event = self.ev_loop.run_until_complete(self.event_logger.wait_for(SellOrderCompletedEvent))
-        trade_events = [t for t in self.event_logger.event_log if isinstance(t, OrderFilledEvent)]
-        base_amount_traded = sum(t.amount for t in trade_events)
-        quote_amount_traded = sum(t.amount * t.price for t in trade_events)
-
-        self.assertTrue([evt.order_type == OrderType.LIMIT for evt in trade_events])
-        self.assertEqual(order_id, order_completed_event.order_id)
-        self.assertEqual(amount, order_completed_event.base_asset_amount)
-        self.assertEqual("BTC", order_completed_event.base_asset)
-        self.assertEqual("USDT", order_completed_event.quote_asset)
-        self.assertAlmostEqual(base_amount_traded, order_completed_event.base_asset_amount)
-        self.assertAlmostEqual(quote_amount_traded, order_completed_event.quote_asset_amount)
-        self.assertGreater(order_completed_event.fee_amount, Decimal(0))
-        self.assertTrue(any([isinstance(event, SellOrderCreatedEvent) and event.order_id == order_id
-                             for event in self.event_logger.event_log]))
-
-        # check available base balance gets updated, we need to wait a bit for the balance message to arrive
-        expected_base_bal = base_bal
-        self._mock_ws_bal_update(self.base_token, expected_base_bal)
-        self.ev_loop.run_until_complete(asyncio.sleep(1))
-        self.assertAlmostEqual(expected_base_bal, self.connector.get_available_balance(self.base_token), 5)
+    def _mock_bal_update(self, token, available):
+        if API_MOCK_ENABLED:
+            available = float(available)
+            data = fixture.BALANCES.copy()
+            data[0]["data"]["currency"] = token
+            data[0]["data"]["available"] = available
+            self.web_app.update_response("get", BASE_API_URL, "/api/v3.2/user/wallet", data)
+#            HummingWsServerFactory.send_json_threadsafe(WSS_PRIVATE_URL, fixture.BALANCES, delay=0.1)
 
     def test_limit_makers_unfilled(self):
         price = self.connector.get_price(self.trading_pair, True) * Decimal("0.8")
@@ -269,12 +216,12 @@ class BtseExchangeUnitTest(unittest.TestCase):
         quote_bal = self.connector.get_available_balance(self.quote_token)
 
         # order_id = self.connector.buy(self.trading_pair, amount, OrderType.LIMIT_MAKER, price)
-        cl_order_id = self._place_order(True, amount, OrderType.LIMIT_MAKER, price, 1, fixture.UNFILLED_ORDER)
+        cl_order_id = self._place_order(True, amount, OrderType.LIMIT_MAKER, price, 1, fixture.OPEN_ORDER)
         order_created_event = self.ev_loop.run_until_complete(self.event_logger.wait_for(BuyOrderCreatedEvent))
         self.assertEqual(cl_order_id, order_created_event.order_id)
         # check available quote balance gets updated, we need to wait a bit for the balance message to arrive
         expected_quote_bal = quote_bal - (price * amount)
-        self._mock_ws_bal_update(self.quote_token, expected_quote_bal)
+        self._mock_bal_update(self.quote_token, expected_quote_bal)
         self.ev_loop.run_until_complete(asyncio.sleep(2))
         self.assertAlmostEqual(expected_quote_bal, self.connector.get_available_balance(self.quote_token))
         self._cancel_order(cl_order_id)
@@ -285,20 +232,12 @@ class BtseExchangeUnitTest(unittest.TestCase):
         price = self.connector.quantize_order_price(self.trading_pair, price)
         amount = self.connector.quantize_order_amount(self.trading_pair, Decimal("0.0001"))
 
-        cl_order_id = self._place_order(False, amount, OrderType.LIMIT_MAKER, price, 2, fixture.UNFILLED_ORDER)
+        cl_order_id = self._place_order(False, amount, OrderType.LIMIT_MAKER, price, 2, fixture.OPEN_ORDER)  # UNFILLED_ORDER
         order_created_event = self.ev_loop.run_until_complete(self.event_logger.wait_for(SellOrderCreatedEvent))
         self.assertEqual(cl_order_id, order_created_event.order_id)
         self._cancel_order(cl_order_id)
         event = self.ev_loop.run_until_complete(self.event_logger.wait_for(OrderCancelledEvent))
         self.assertEqual(cl_order_id, event.order_id)
-
-    def _mock_ws_bal_update(self, token, available):
-        if API_MOCK_ENABLED:
-            available = float(available)
-            data = fixture.WS_BALANCE.copy()
-            data["result"]["data"][0]["currency"] = token
-            data["result"]["data"][0]["available"] = available
-            HummingWsServerFactory.send_json_threadsafe(WSS_PRIVATE_URL, fixture.WS_BALANCE, delay=0.1)
 
     def test_limit_maker_rejections(self):
         price = self.connector.get_price(self.trading_pair, True) * Decimal("1.2")
@@ -331,17 +270,80 @@ class BtseExchangeUnitTest(unittest.TestCase):
         asyncio.ensure_future(self.connector.cancel_all(3))
         if API_MOCK_ENABLED:
             data = fixture.WS_ORDER_CANCELLED.copy()
-            data["result"]["data"][0]["client_oid"] = buy_id
-            data["result"]["data"][0]["order_id"] = 1
+            data[0]["data"]["clOrderID"] = buy_id
+            data[0]["data"]["orderID"] = 1
             HummingWsServerFactory.send_json_threadsafe(WSS_PRIVATE_URL, data, delay=0.1)
             self.ev_loop.run_until_complete(asyncio.sleep(1))
             data = fixture.WS_ORDER_CANCELLED.copy()
-            data["result"]["data"][0]["client_oid"] = sell_id
-            data["result"]["data"][0]["order_id"] = 2
+            data[0]["data"]["clOrderID"] = sell_id
+            data[0]["data"]["orderID"] = 2
             HummingWsServerFactory.send_json_threadsafe(WSS_PRIVATE_URL, data, delay=0.11)
         self.ev_loop.run_until_complete(asyncio.sleep(3))
         cancel_events = [t for t in self.event_logger.event_log if isinstance(t, OrderCancelledEvent)]
         self.assertEqual({buy_id, sell_id}, {o.order_id for o in cancel_events})
+
+    def test_buy_and_sell(self):
+        price = self.connector.get_price(self.trading_pair, True) * Decimal("1.05")
+        price = self.connector.quantize_order_price(self.trading_pair, price)
+        amount = self.connector.quantize_order_amount(self.trading_pair, Decimal("0.0001"))
+        quote_bal = self.connector.get_available_balance(self.quote_token)
+        base_bal = self.connector.get_available_balance(self.base_token)
+
+        order_id = self._place_order(True, amount, OrderType.LIMIT, price, 1, None,
+                                     fixture.WS_ORDER_FILLED)  # WS_TRADE
+        order_completed_event = self.ev_loop.run_until_complete(self.event_logger.wait_for(BuyOrderCompletedEvent))
+        self.ev_loop.run_until_complete(asyncio.sleep(2))
+        trade_events = [t for t in self.event_logger.event_log if isinstance(t, OrderFilledEvent)]
+        base_amount_traded = sum(t.amount for t in trade_events)
+        quote_amount_traded = sum(t.amount * t.price for t in trade_events)
+
+        self.assertTrue([evt.order_type == OrderType.LIMIT for evt in trade_events])
+        self.assertEqual(order_id, order_completed_event.order_id)
+        self.assertEqual(amount, order_completed_event.base_asset_amount)
+        self.assertEqual("BTC", order_completed_event.base_asset)
+        self.assertEqual("USDT", order_completed_event.quote_asset)
+        self.assertAlmostEqual(base_amount_traded, order_completed_event.base_asset_amount)
+        self.assertAlmostEqual(quote_amount_traded, order_completed_event.quote_asset_amount)
+        self.assertGreater(order_completed_event.fee_amount, Decimal(0))
+        self.assertTrue(any([isinstance(event, BuyOrderCreatedEvent) and event.order_id == order_id
+                             for event in self.event_logger.event_log]))
+
+        # check available quote balance gets updated, we need to wait a bit for the balance message to arrive
+        expected_quote_bal = quote_bal - quote_amount_traded
+        self._mock_bal_update(self.quote_token, expected_quote_bal)
+        self.ev_loop.run_until_complete(asyncio.sleep(1))
+        self.assertAlmostEqual(expected_quote_bal, self.connector.get_available_balance(self.quote_token))
+
+        # Reset the logs
+        self.event_logger.clear()
+
+        # Try to sell back the same amount to the exchange, and watch for completion event.
+        price = self.connector.get_price(self.trading_pair, True) * Decimal("0.95")
+        price = self.connector.quantize_order_price(self.trading_pair, price)
+        amount = self.connector.quantize_order_amount(self.trading_pair, Decimal("0.0001"))
+        order_id = self._place_order(False, amount, OrderType.LIMIT, price, 2, None,
+                                     fixture.WS_ORDER_FILLED)  # WS_TRADE
+        order_completed_event = self.ev_loop.run_until_complete(self.event_logger.wait_for(SellOrderCompletedEvent))
+        trade_events = [t for t in self.event_logger.event_log if isinstance(t, OrderFilledEvent)]
+        base_amount_traded = sum(t.amount for t in trade_events)
+        quote_amount_traded = sum(t.amount * t.price for t in trade_events)
+
+        self.assertTrue([evt.order_type == OrderType.LIMIT for evt in trade_events])
+        self.assertEqual(order_id, order_completed_event.order_id)
+        self.assertEqual(amount, order_completed_event.base_asset_amount)
+        self.assertEqual("BTC", order_completed_event.base_asset)
+        self.assertEqual("USDT", order_completed_event.quote_asset)
+        self.assertAlmostEqual(base_amount_traded, order_completed_event.base_asset_amount)
+        self.assertAlmostEqual(quote_amount_traded, order_completed_event.quote_asset_amount)
+        self.assertGreater(order_completed_event.fee_amount, Decimal(0))
+        self.assertTrue(any([isinstance(event, SellOrderCreatedEvent) and event.order_id == order_id
+                             for event in self.event_logger.event_log]))
+
+        # check available base balance gets updated, we need to wait a bit for the balance message to arrive
+        expected_base_bal = base_bal
+        self._mock_bal_update(self.base_token, expected_base_bal)
+        self.ev_loop.run_until_complete(asyncio.sleep(1))
+        self.assertAlmostEqual(expected_base_bal, self.connector.get_available_balance(self.base_token), 5)
 
     def test_order_price_precision(self):
         bid_price: Decimal = self.connector.get_price(self.trading_pair, True)
@@ -359,7 +361,7 @@ class BtseExchangeUnitTest(unittest.TestCase):
         bid_price = mid_price * Decimal("0.9333192292111341")
         ask_price = mid_price * Decimal("1.0492431474884933")
 
-        cl_order_id_1 = self._place_order(True, amount, OrderType.LIMIT, bid_price, 1, fixture.UNFILLED_ORDER)
+        cl_order_id_1 = self._place_order(True, amount, OrderType.LIMIT, bid_price, 1, fixture.OPEN_ORDER)  # UNFILLED
 
         # Wait for the order created event and examine the order made
         self.ev_loop.run_until_complete(self.event_logger.wait_for(BuyOrderCreatedEvent))
@@ -370,7 +372,7 @@ class BtseExchangeUnitTest(unittest.TestCase):
         self.assertEqual(quantized_bid_size, order.amount)
 
         # Test ask order
-        cl_order_id_2 = self._place_order(False, amount, OrderType.LIMIT, ask_price, 1, fixture.UNFILLED_ORDER)
+        cl_order_id_2 = self._place_order(False, amount, OrderType.LIMIT, ask_price, 1, fixture.OPEN_ORDER)  # UNFILLED
 
         # Wait for the order created event and examine and order made
         self.ev_loop.run_until_complete(self.event_logger.wait_for(SellOrderCreatedEvent))
@@ -403,7 +405,7 @@ class BtseExchangeUnitTest(unittest.TestCase):
             amount: Decimal = Decimal("0.0001")
             amount = self.connector.quantize_order_amount(self.trading_pair, amount)
 
-            cl_order_id = self._place_order(True, amount, OrderType.LIMIT_MAKER, price, 1, fixture.UNFILLED_ORDER)
+            cl_order_id = self._place_order(True, amount, OrderType.LIMIT_MAKER, price, 1, fixture.OPEN_ORDER)  # UNFILLED
             order_created_event = self.ev_loop.run_until_complete(self.event_logger.wait_for(BuyOrderCreatedEvent))
             self.assertEqual(cl_order_id, order_created_event.order_id)
 
@@ -483,7 +485,7 @@ class BtseExchangeUnitTest(unittest.TestCase):
             amount = self.connector.quantize_order_amount(self.trading_pair, Decimal("0.0001"))
 
             order_id = self._place_order(True, amount, OrderType.LIMIT, price, 1, None,
-                                         fixture.WS_TRADE)
+                                         fixture.WS_ORDER_FILLED)   # WS_TRADE
             self.ev_loop.run_until_complete(self.event_logger.wait_for(BuyOrderCompletedEvent))
             self.ev_loop.run_until_complete(asyncio.sleep(1))
 
@@ -495,7 +497,7 @@ class BtseExchangeUnitTest(unittest.TestCase):
             price = self.connector.quantize_order_price(self.trading_pair, price)
             amount = self.connector.quantize_order_amount(self.trading_pair, Decimal("0.0001"))
             order_id = self._place_order(False, amount, OrderType.LIMIT, price, 2, None,
-                                         fixture.WS_TRADE)
+                                         fixture.WS_ORDER_FILLED)  # WS_TRADE
             self.ev_loop.run_until_complete(self.event_logger.wait_for(SellOrderCompletedEvent))
 
             # Query the persisted trade logs
