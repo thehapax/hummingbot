@@ -1,20 +1,21 @@
 from decimal import Decimal
 
 EXCHANGE_NAME = "btse"
-WSS_PRIVATE_URL = 'wss://ws.btse.com/spotWS'
-WSS_PUBLIC_URL = 'wss://ws.btse.com/spotWS'
-# WSS_PRIVATE_URL = 'wss://testws.btse.io/spotWS'
-# WSS_PUBLIC_URL = 'wss://testws.btse.io/spotWS'
 
 # Production
-BTSE_Endpoint = 'https://api.btse.com/spot/api/v3.2'
-BTSE_WSEndpoint = 'wss://ws.btse.com'
+# BTSE_Endpoint = 'https://api.btse.com/spot/api/v3.2'
+# BTSE_WSEndpoint = 'wss://ws.btse.com'
+# WSS_PRIVATE_URL = 'wss://ws.btse.com/spotWS'
+# WSS_PUBLIC_URL = 'wss://ws.btse.com/spotWS'
 
 # Testnet
-# BTSE_WSEndpoint = 'wss://testws.btse.io'
-# BTSE_Endpoint = 'https://testapi.btse.io/spot/api/v3.2/'
+BTSE_Endpoint = 'https://testapi.btse.io/spot/api/v3.2/'
+BTSE_WSEndpoint = 'wss://testws.btse.io'
+WSS_PRIVATE_URL = 'wss://testws.btse.io/spotWS'
+WSS_PUBLIC_URL = 'wss://testws.btse.io/spotWS'
 
-# REST_URL = "https://api.btse.com/spot/api/v3.2/"
+
+# Example: REST_URL = "https://api.btse.com/spot/api/v3.2/"
 REST_URL = BTSE_Endpoint
 
 # supported BTSE currencies
@@ -109,7 +110,7 @@ BASE_ORDER_MIN = {
 
 # from kraken constants
 # replace these values with btse values instead of kraken
-
+'''
 CRYPTO_QUOTES = [
     "XBT",
     "ETH",
@@ -138,41 +139,4 @@ FIAT_QUOTES = ["Z" + quote for quote in FIAT_QUOTES] + FIAT_QUOTES
 
 QUOTES = CRYPTO_QUOTES + ADDED_CRYPTO_QUOTES + FIAT_QUOTES
 
-'''
-BASE_ORDER_MIN = {
-    "ALGO": Decimal("50"),
-    "XREP": Decimal("0.3"),
-    "BAT": Decimal("50"),
-    "BTC": Decimal("0.002"),
-    "XBT": Decimal("0.002"),
-    "BCH": Decimal("0.000002"),
-    "ADA": Decimal("1"),
-    "LINK": Decimal("10"),
-    "ATOM": Decimal("1"),
-    "DAI": Decimal("10"),
-    "DASH": Decimal("0.03"),
-    "XDG": Decimal("3000"),
-    "EOS": Decimal("3"),
-    "ETH": Decimal("0.02"),
-    "ETC": Decimal("0.3"),
-    "GNO": Decimal("0.02"),
-    "ICX": Decimal("50"),
-    "LSK": Decimal("10"),
-    "LTC": Decimal("0.1"),
-    "XMR": Decimal("0.1"),
-    "NANO": Decimal("10"),
-    "OMG": Decimal("10"),
-    "PAXG": Decimal("0.01"),
-    "QTUM": Decimal("0.1"),
-    "XRP": Decimal("30"),
-    "SC": Decimal("5000"),
-    "XLM": Decimal("30"),
-    "USDT": Decimal("5"),
-    "XTZ": Decimal("1"),
-    "USDC": Decimal("5"),
-    "MLN": Decimal("0.1"),
-    "WAVES": Decimal("10"),
-    "ZEC": Decimal("0.03"),
-    "TRX": Decimal("500")
-}
 '''

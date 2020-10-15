@@ -107,14 +107,17 @@ class BtseExchange(ExchangeBase):
 
     @property
     def order_books(self) -> Dict[str, OrderBook]:
+        print("inside order book tracker in BtseExchange")
         return self._order_book_tracker.order_books
 
     @property
     def trading_rules(self) -> Dict[str, TradingRule]:
+        print("inside trading rules in BtseExchange")
         return self._trading_rules
 
     @property
     def in_flight_orders(self) -> Dict[str, BtseInFlightOrder]:
+        print("inside in flight orders in BtseExchange")
         return self._in_flight_orders
 
     @property
@@ -263,6 +266,7 @@ class BtseExchange(ExchangeBase):
 
     # check - replace public/get-instruments
     async def _update_trading_rules(self):
+        print("inside _update_trading_rules in BtseExchange")
         market_info = await self._api_request("get", path_url="market_summary")
         self._trading_rules.clear()
         self._trading_rules = self._format_trading_rules(market_info)
@@ -278,7 +282,7 @@ class BtseExchange(ExchangeBase):
         result = {}
         for rule in markets_info:
             try:
-                trading_pair = rule["symbol"]   # floats to decimal? check
+                trading_pair = rule["symbol"]   # floats to decimal check
                 price_step = rule['minPriceIncrement']  # float
                 quantity_step = rule['minSizeIncrement']  # floats
                 result[trading_pair] = TradingRule(trading_pair,
@@ -433,14 +437,6 @@ class BtseExchange(ExchangeBase):
         # if order_type is OrderType.LIMIT_MAKER:
         #    api_params["exec_inst"] = "POST_ONLY"
 
-        self.start_tracking_order(order_id,
-                                  None,
-                                  trading_pair,
-                                  trade_type,
-                                  price,
-                                  amount,
-                                  order_type
-                                  )
         try:
             order_result = await self._api_request("post", "order", api_params, True)
             exchange_order_id = str(order_result["orderID"])
@@ -452,6 +448,16 @@ class BtseExchange(ExchangeBase):
 
             event_tag = MarketEvent.BuyOrderCreated if trade_type is TradeType.BUY else MarketEvent.SellOrderCreated
             event_class = BuyOrderCreatedEvent if trade_type is TradeType.BUY else SellOrderCreatedEvent
+
+            # only create a tracking order if successfully created via API
+            self.start_tracking_order(order_id,
+                                      None,
+                                      trading_pair,
+                                      trade_type,
+                                      price,
+                                      amount,
+                                      order_type)
+
             self.trigger_event(event_tag,
                                event_class(
                                    self.current_timestamp,
@@ -553,8 +559,9 @@ class BtseExchange(ExchangeBase):
                 await self._poll_notifier.wait()
                 await safe_gather(
                     self._update_balances(),  # done 10/8/20
-                    self._update_order_status(),  # rest api trade history
-                    # todo - need to add rest version for open orders
+                    self._update_order_status(),  # rest api trade history only
+                    # todo - open orders, only & filled orders
+                    # no cancel or error status
                 )
                 self._last_poll_timestamp = self.current_timestamp
             except asyncio.CancelledError:
@@ -572,6 +579,7 @@ class BtseExchange(ExchangeBase):
         """
         Calls REST API to update total and available balances.
         """
+        print("inside _update_balances in btse_exchange")
         local_asset_names = set(self._account_balances.keys())
         remote_asset_names = set()
         account_info = await self._api_request("post", "user/wallet", {}, True)
@@ -591,6 +599,7 @@ class BtseExchange(ExchangeBase):
         """
         Calls REST API to get status update for each in-flight order.
         """
+        print("inside _update_order_status in btse_exchange")
         last_tick = self._last_poll_timestamp / self.UPDATE_ORDER_STATUS_MIN_INTERVAL
         current_tick = self.current_timestamp / self.UPDATE_ORDER_STATUS_MIN_INTERVAL
 
@@ -615,15 +624,38 @@ class BtseExchange(ExchangeBase):
                     continue
                 for trade_msg in update_result:
                     await self._process_trade_message(trade_msg)
-                    # for btse, filled completed orders with fees (tradehistory)
-#                self._process_order_message(update_result["result"]["order_info"])
-                # _process_order -  open orders or notificationAPI
 
-    # todo - for btse
+    # for rest alternative if needed - method not used right now
+    def get_active_order(id, trade_msg: Dict[str, Any]):
+        for open_trade in trade_msg:
+            if open_trade['orderID'] == id:
+                return open_trade
+
+    # rest alternative if needed - check pls. add to update_order_status
+    # _process_order -  open orders or none for rest api
+    async def _get_open_order_status(self):
+        """
+        Calls REST API to get open order status update for each in-flight order.
+        """
+        tasks = []
+        tasks.append(self._api_request("post", "user/open_orders", True))
+        self.logger().debug(f"Polling for open order status updates of {len(tasks)} orders.")
+        update_results = await safe_gather(*tasks, return_exceptions=True)
+        for update_result in update_results:
+            if isinstance(update_result, Exception):
+                raise update_result
+            if not update_result:
+                self.logger().info(f"_get_open_order_status result not in resp: {update_result}")
+                continue
+            for trade_msg in update_result:
+                await self._process_order_message(trade_msg)
+
+    # for btse, filled completed orders with fees (tradehistory)
     def _process_order_message(self, order_msg: Dict[str, Any]):
         """
         Updates in-flight order and triggers cancellation or failure event if needed.
-        :param order_msg: The order response from either REST or web socket API (if they are of the same format)
+        :param order_msg: The order response from web socket API
+        (REST API not same format, only open orders)
 
         example from notificationsAPI websocket:
         {   'averageFillPrice': 0.0,
@@ -643,34 +675,8 @@ class BtseExchange(ExchangeBase):
                 'type': ''},
                 'topic': 'notificationApiV1'}
 
-        example from open orders Rest API:  - Todo
-        {   'averageFillPrice': 0.0,
-        'cancelDuration': 0,
-        'clOrderID': 'MYOWNORDERID2',
-        'fillSize': 0.0,
-        'filledSize': 0.0,
-        'orderID': 'cb2d5a05-357d-425a-b965-789d2727fb5a',
-        'orderState': 'STATUS_ACTIVE',
-        'orderType': 76, # 76 is for limit order
-        'orderValue': 14.1,
-        'pegPriceDeviation': 0.0,
-        'pegPriceMax': 0.0,
-        'pegPriceMin': 0.0,
-        'price': 7050.0,
-        'side': 'BUY',
-        'size': 0.002,
-        'symbol': 'BTC-USD',
-        'timestamp': 1602376422318,
-        'trailValue': 0.0,
-        'triggerOrder': False,
-        'triggerOrderType': 0,
-        'triggerOriginalPrice': 0.0,
-        'triggerPrice': 0.0,
-        'triggerStopPrice': 0.0,
-        'triggerTrailingStopDeviation': 0.0,
-        'triggered': False},
-
         """
+        print("inside _process_order_message in btse_exchange")
         client_order_id = order_msg["clOrderID"]
         if client_order_id not in self._in_flight_orders:
             return
@@ -726,6 +732,7 @@ class BtseExchange(ExchangeBase):
         'username': 'hapax10test',
         'wallet': 'SPOT@'},
         """
+        print("inside process trade_message in btse_exchange")
         for order in self._in_flight_orders.values():
             await order.get_exchange_order_id()
         track_order = [o for o in self._in_flight_orders.values() if trade_msg["orderId"] == o.exchange_order_id]
@@ -779,6 +786,7 @@ class BtseExchange(ExchangeBase):
         :param timeout_seconds: The timeout at which the operation will be canceled.
         :returns List of CancellationResult which indicates whether each order is successfully cancelled.
         """
+        print("inside cancel_all in btse_exchange")
         incomplete_orders = [o for o in self._in_flight_orders.values() if not o.is_done]
         tasks = [self._execute_cancel(o.trading_pair, o.client_order_id, True) for o in incomplete_orders]
         order_id_set = set([o.client_order_id for o in incomplete_orders])
@@ -855,6 +863,8 @@ class BtseExchange(ExchangeBase):
         """
         async for event_message in self._iter_user_event_queue():
             try:
+                print("inside _user_stream_event_listener in btse_exchange: event_message")
+                print(event_message)
                 if "notificationApi" not in event_message["topic"]:
                     continue
                 for trade_msg in event_message["data"]:
