@@ -74,7 +74,7 @@ class BtseOrderBookTracker(OrderBookTracker):
                     message = await message_queue.get()
 
                 if message.type is OrderBookMessageType.DIFF:
-                    print(">>>>>> inside message.type is OrderBookMessage.Type.DIFF  <<<<<<<")
+                    print(">>>>>> inside message.type is OrderBookMessageType.DIFF  <<<<<<<")
                     bids, asks = active_order_tracker.convert_diff_message_to_order_book_row(message)
                     order_book.apply_diffs(bids, asks, message.update_id)
                     past_diffs_window.append(message)
