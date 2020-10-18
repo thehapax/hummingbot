@@ -46,7 +46,8 @@ cdef class BtseActiveOrderTracker:
 
     def get_rates_and_quantities(self, entry) -> tuple:
         # price, quantity
-        return float(entry[0]), float(entry[1])
+        items = list(entry.values())
+        return float(items[0]), float(items[1])
 
     cdef tuple c_convert_diff_message_to_np_arrays(self, object message):
         cdef:
@@ -61,8 +62,8 @@ cdef class BtseActiveOrderTracker:
             double timestamp = message.timestamp
             double amount = 0
 
-        bid_entries = content["bids"]
-        ask_entries = content["asks"]
+        bid_entries = content["buyQuote"]
+        ask_entries = content["sellQuote"]
 
         bids = s_empty_diff
         asks = s_empty_diff
@@ -104,7 +105,15 @@ cdef class BtseActiveOrderTracker:
         timestamp = message.timestamp
         content = message.content
 
-        for snapshot_orders, active_orders in [(content["bids"], self._active_bids), (content["asks"], self.active_asks)]:
+        cdef c_bids = []
+        cdef c_asks = []
+        for i in content['buyQuote']:
+            c_bids.append(list(i.values()))
+        for i in content['sellQuote']:
+            c_asks.append(list(i.values()))
+
+        # for snapshot_orders, active_orders in [(content["bids"], self._active_bids), (content["asks"], self.active_asks)]:
+        for snapshot_orders, active_orders in [(c_bids, self._active_bids), (c_asks, self.active_asks)]:
             for order in snapshot_orders:
                 price, amount = self.get_rates_and_quantities(order)
 
@@ -143,18 +152,6 @@ cdef class BtseActiveOrderTracker:
             asks = asks.reshape((0, 4))
 
         return bids, asks
-
-    cdef np.ndarray[np.float64_t, ndim=1] c_convert_trade_message_to_np_array(self, object message):
-        cdef:
-            double trade_type_value = 2.0
-
-        timestamp = message.timestamp
-        content = message.content
-
-        return np.array(
-            [timestamp, trade_type_value, float(content["price"]), float(content["size"])],
-            dtype="float64"
-        )
 
     def convert_diff_message_to_order_book_row(self, message):
         np_bids, np_asks = self.c_convert_diff_message_to_np_arrays(message)
