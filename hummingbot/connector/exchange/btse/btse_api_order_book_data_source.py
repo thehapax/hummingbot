@@ -85,23 +85,8 @@ class BtseAPIOrderBookDataSource(OrderBookTrackerDataSource):
 
             orderbook_data: List[Dict[str, Any]] = await safe_gather(orderbook_response.json())
 
-        return orderbook_data
+        return orderbook_data['data']
 
-        ''''
-            bids = []
-            asks = []
-            for i in orderbook_data['buyQuote']:
-                bids.append(list(i.values()))
-            for i in orderbook_data['sellQuote']:
-                asks.append(list(i.values()))
-
-            ob = {'timestamp': orderbook_data['timestamp'], 'symbol': orderbook_data['symbol']}
-            ob['bids'] = bids
-            ob['asks'] = asks
-        return ob
-        '''
-
-    # todo -  don't need deep converter for active order tracker, only simple dict to list
     async def get_new_order_book(self, trading_pair: str) -> OrderBook:
         snapshot: Dict[str, Any] = await self.get_order_book_data(trading_pair)
         snapshot_timestamp: float = time.time()
@@ -113,12 +98,10 @@ class BtseAPIOrderBookDataSource(OrderBookTrackerDataSource):
         order_book = self.order_book_create_function()
         active_order_tracker: BtseActiveOrderTracker = BtseActiveOrderTracker()
         bids, asks = active_order_tracker.convert_snapshot_message_to_order_book_row(snapshot_msg)
-        # bids = snapshot['bids']
-        # asks = snapshot['asks']
         order_book.apply_snapshot(bids, asks, snapshot_msg.update_id)
         return order_book
 
-    # no timesamp from btse ws - fix below
+    # todo : test the following
     async def listen_for_trades(self, ev_loop: asyncio.BaseEventLoop, output: asyncio.Queue):
         """
         Listen for trades using websocket trade channel
@@ -132,14 +115,14 @@ class BtseAPIOrderBookDataSource(OrderBookTrackerDataSource):
                     lambda pair: f"tradeHistoryApi:{pair}",
                     self._trading_pairs
                 )))
-                # todo : test the following
+
                 async for response in ws.on_message():
                     if response.get("topic") is None:
                         continue
                     for trade in response["data"]:
                         trade: Dict[Any] = trade
-                        trade_timestamp: int = ms_timestamp_to_s(time.time())
-#                        trade_timestamp: int = ms_timestamp_to_s(trade["timestamp"]) # no timestamp?
+                        # trade_timestamp: int = ms_timestamp_to_s(time.time())
+                        trade_timestamp: int = ms_timestamp_to_s(trade["timestamp"])
                         trade_msg: OrderBookMessage = BtseOrderBook.trade_message_from_exchange(
                             trade,
                             trade_timestamp,
@@ -154,7 +137,7 @@ class BtseAPIOrderBookDataSource(OrderBookTrackerDataSource):
             finally:
                 await ws.disconnect()
 
-    # Todo - test this- look at kraken example, missing orderbook timestamp in WS
+    # Todo - test this
     async def listen_for_order_book_diffs(self, ev_loop: asyncio.BaseEventLoop, output: asyncio.Queue):
         """
         Listen for orderbook diffs using websocket book channel
@@ -172,11 +155,10 @@ class BtseAPIOrderBookDataSource(OrderBookTrackerDataSource):
                 async for response in ws.on_message():
                     if response.get("topic") is None:
                         continue
-                    order_book_data = response["data"][0]
-                    # get epoch time from rest; timestamp is missing in ws
+                    order_book_data = response["data"]
+                    timestamp: int = ms_timestamp_to_s(response['data']["timestamp"])
                     # timestamp: int = ms_timestamp_to_s(order_book_data["t"])
-                    timestamp: int = ms_timestamp_to_s(time.time())
-                    # hack because no btse ws time
+                    # timestamp: int = ms_timestamp_to_s(time.time()) # in event API has no timestamp
                     # data in this channel is not order book diff but the entire order book (up to depth 150).
                     # so we need to convert it into a order book snapshot.
                     # Btse does not offer order book diff ws updates.
