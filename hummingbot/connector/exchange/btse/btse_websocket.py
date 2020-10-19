@@ -12,7 +12,7 @@ from typing import Optional, AsyncIterable, Any, List
 from websockets.exceptions import ConnectionClosed
 from hummingbot.logger import HummingbotLogger
 from hummingbot.connector.exchange.btse.btse_auth import BtseAuth
-from hummingbot.connector.exchange.btse.btse_utils import RequestId
+from hummingbot.connector.exchange.btse.btse_utils import RequestId, get_auth_responses
 from hummingbot.connector.exchange.btse.btse_periodic_checker import BtsePeriodicChecker
 
 # reusable websocket class
@@ -29,14 +29,6 @@ class BtseWebsocket(RequestId):
             cls._logger = logging.getLogger(__name__)
         return cls._logger
 
-    @classmethod
-    def is_json(cls, myjson) -> bool:
-        try:
-            ujson.loads(myjson)
-        except ValueError:
-            return False
-        return True
-
     def __init__(self, auth: Optional[BtseAuth] = None):
         self._auth: Optional[BtseAuth] = auth
         self._isPrivate = True if self._auth is not None else False
@@ -45,11 +37,9 @@ class BtseWebsocket(RequestId):
         self._ping_checker = BtsePeriodicChecker(period_ms = 8 * 1000)
 
     # connect to exchange
-
     async def connect(self):
         try:
             self._client = await websockets.connect(self._WS_URL)
-
             # if auth class was passed into websocket class
             # we need to emit authenticated requests
             if self._isPrivate:
@@ -74,19 +64,15 @@ class BtseWebsocket(RequestId):
             while True:
                 try:
                     raw_msg_str: str = await asyncio.wait_for(self._client.recv(), timeout=self.MESSAGE_TIMEOUT)
-                    raw_msg = None
                     # Heartbeat keep alive response
+                    print("======== BTSE Websockets Raw Message String =======")
+                    print(raw_msg_str)
                     if self._ping_checker.check():
                         payload = {"op": "ping"}
-                        print("==== Keep Alive HEART BEAT === sending a ping: " + str(payload))
+                        print("==== BTSE Keep Alive HEART BEAT === sending a ping: " + str(payload))
                         safe_ensure_future(self._client.send(ujson.dumps(payload)))
-                        # await self._client.send(ujson.dumps(payload))
-
-                    # Ignore non dict messages, unless auth check (Todo)
-                    if self.is_json(raw_msg_str):
-                        raw_msg = ujson.loads(raw_msg_str)
-                        print("inside _messages: " + str(raw_msg))
-                        yield raw_msg
+                    d_raw_msg = get_auth_responses(raw_msg_str)
+                    yield d_raw_msg
                 except asyncio.TimeoutError:
                     await asyncio.wait_for(self._client.ping(), timeout=self.PING_TIMEOUT)
         except asyncio.TimeoutError:

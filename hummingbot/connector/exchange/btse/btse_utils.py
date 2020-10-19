@@ -16,6 +16,21 @@ def get_quote(symbol):
     return pairs[1]
 
 
+def get_auth_responses(response):
+    lookup = {'UNLOGIN_USER connect success': 'Connected No Login or bad token',
+              'connect success': 'connected with token',
+              'is authenticated successfully': 'Do Auth Pass',
+              'AUTHENTICATE ERROR': 'do auth pass failed'}
+
+    if "topic" in str(response):
+        return ujson.loads(response)
+
+    for k, v in lookup.items():
+        if k in response:
+            rdict = {"topic": "auth", "message": str(response), "info": str(v)}
+            return ujson.dumps(rdict)
+
+
 # check if the string  is a json
 def is_json(myjson):
     try:
