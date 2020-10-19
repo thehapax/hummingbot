@@ -15,8 +15,6 @@ from hummingbot.connector.exchange.btse.btse_auth import BtseAuth
 from hummingbot.connector.exchange.btse.btse_utils import RequestId, get_auth_responses
 from hummingbot.connector.exchange.btse.btse_periodic_checker import BtsePeriodicChecker
 
-# reusable websocket class
-
 
 class BtseWebsocket(RequestId):
     MESSAGE_TIMEOUT = 30.0

@@ -44,11 +44,12 @@ class BtseAPIUserStreamDataSource(UserStreamTrackerDataSource):
             await ws.subscribe(["notificationApiV1"])
             print("Websocket subscribe to notifications api")
             async for msg in ws.on_message():
+                if (msg.get('data') is None):
+                    continue
+                # only return messages with data
                 print(f"WS_SOCKET: {msg}")
                 yield msg
                 self._last_recv_time = time.time()
-                if (msg.get("topic") is None):
-                    continue
         except Exception as e:
             raise e
         finally:

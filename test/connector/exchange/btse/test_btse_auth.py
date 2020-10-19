@@ -24,12 +24,12 @@ class TestAuth(unittest.TestCase):
         await self.ws.subscribe(["notificationApi"])
         await self.ws.subscribe(["orderBookApi:BTC-USD_5"])
 
-        # comment out 'return response' for continuous run
         async for response in self.ws.on_message():
-            if type(response) is dict:
-                # print("\nResponse is type Dict")
+            print(type(response))
+            if (response.get("topic") == 'Auth_Success'):
                 return response
 
     def test_auth(self):
+        print("inside test_auth")
         result: List[str] = self.ev_loop.run_until_complete(self.con_auth())
-        assert result["topic"] == "orderBookApi:BTC-USD_5"
+        assert "authenticated successfully" in result["message"]
