@@ -63,8 +63,6 @@ class BtseWebsocket(RequestId):
                 try:
                     raw_msg_str: str = await asyncio.wait_for(self._client.recv(), timeout=self.MESSAGE_TIMEOUT)
                     # Heartbeat keep alive response
-                    print("======== BTSE Websockets Raw Message String =======")
-                    print(raw_msg_str)
                     if self._ping_checker.check():
                         payload = {"op": "ping"}
                         print("==== BTSE Keep Alive HEART BEAT === sending a ping: " + str(payload))

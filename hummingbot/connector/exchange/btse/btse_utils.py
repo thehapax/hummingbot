@@ -16,6 +16,19 @@ def get_quote(symbol):
     return pairs[1]
 
 
+def reshape(orderbook_data):
+    newob = {}
+    bids = []
+    asks = []
+    t = orderbook_data['timestamp']
+    for i in orderbook_data['buyQuote']:
+        bids.append(list(i.values()))
+    for i in orderbook_data['sellQuote']:
+        asks.append(list(i.values()))
+    newob = {'bids': bids, 'asks': asks, 't': t}
+    return newob
+
+
 def get_auth_responses(response):
     lookup = {'UNLOGIN_USER connect success': 'Auth_Connect_No_Login',
               'connect success': 'Auth_Connected_Token',
