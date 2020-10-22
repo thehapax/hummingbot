@@ -41,7 +41,8 @@ from test.integration.humming_ws_server import HummingWsServerFactory
 from . import fixture
 
 logging.basicConfig(level=METRICS_LOG_LEVEL)
-API_MOCK_ENABLED = conf.mock_api_enabled is not None and conf.mock_api_enabled.lower() in ['true', 'yes', '1']
+# API_MOCK_ENABLED = conf.mock_api_enabled is not None and conf.mock_api_enabled.lower() in ['true', 'yes', '1']
+API_MOCK_ENABLED = True
 API_KEY = "XXX" if API_MOCK_ENABLED else conf.btse_api_key
 API_SECRET = "YYY" if API_MOCK_ENABLED else conf.btse_secret_key
 BASE_API_URL = "testapi.btse.io/spot"
@@ -122,6 +123,7 @@ class BtseExchangeUnitTest(unittest.TestCase):
         if connector is None:
             connector = cls.connector
         while True:
+            print(" checking if connector is ready.....")
             now = time.time()
             next_iteration = now // 1.0 + 1
             if connector.ready:
@@ -169,7 +171,8 @@ class BtseExchangeUnitTest(unittest.TestCase):
                      ws_order_filled=None, ws_order_inserted=None) -> str:
         if API_MOCK_ENABLED:
             data = fixture.PLACE_ORDER.copy()
-            data["orderID"] = str(ex_order_id)
+            # data["orderID"] = str(ex_order_id)
+            data["clOrderID"] = str(ex_order_id)
             self.web_app.update_response("post", BASE_API_URL, "/api/v3.1/order", data)
         if is_buy:
             cl_order_id = self.connector.buy(self.trading_pair, amount, order_type, price)
@@ -177,7 +180,7 @@ class BtseExchangeUnitTest(unittest.TestCase):
             cl_order_id = self.connector.sell(self.trading_pair, amount, order_type, price)
         if API_MOCK_ENABLED:
             # todo fix - get open_order for REST API below for btse
-            #            if get_order_fixture is not None:
+            #            if get_order_fixture is not None: # order detail does not exist in btse
             #                data = get_order_fixture.copy()
             #                data["result"]["order_info"]["client_oid"] = cl_order_id
             #                data["result"]["order_info"]["order_id"] = ex_order_id
@@ -204,10 +207,11 @@ class BtseExchangeUnitTest(unittest.TestCase):
         if API_MOCK_ENABLED:
             available = float(available)
             data = fixture.BALANCES.copy()
-            data[0]["data"]["currency"] = token
-            data[0]["data"]["available"] = available
+            data[0]["currency"] = token
+            data[0]["available"] = available
             self.web_app.update_response("get", BASE_API_URL, "/api/v3.2/user/wallet", data)
-#            HummingWsServerFactory.send_json_threadsafe(WSS_PRIVATE_URL, fixture.BALANCES, delay=0.1)
+            # why line below uncommented
+            HummingWsServerFactory.send_json_threadsafe(WSS_PRIVATE_URL, fixture.BALANCES, delay=0.1)
 
     def test_limit_makers_unfilled(self):
         price = self.connector.get_price(self.trading_pair, True) * Decimal("0.8")
