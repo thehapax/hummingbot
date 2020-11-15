@@ -1,3 +1,5 @@
+# from hummingbot.connector.exchange.btse.btse_constants import BTSE_ENUM
+# from hummingbot.core.data_type.user_stream_tracker_data_source import UserStreamTrackerDataSource
 import logging
 from typing import (
     Dict,
@@ -43,6 +45,7 @@ from hummingbot.connector.exchange.btse.btse_in_flight_order import BtseInFlight
 from hummingbot.connector.exchange.btse import btse_utils
 from hummingbot.connector.exchange.btse import btse_constants as Constants
 from hummingbot.core.utils.estimate_fee import estimate_fee
+from hummingbot.connector.exchange.btse.btse_utils import get_status_msg
 
 btsee_logger = None
 s_decimal_NaN = Decimal("nan")
@@ -107,7 +110,7 @@ class BtseExchange(ExchangeBase):
 
     @property
     def order_books(self) -> Dict[str, OrderBook]:
-        print("inside order book tracker in BtseExchange")
+        print("-- EX: inside property: order book tracker in BtseExchange")
         return self._order_book_tracker.order_books
 
     @property
@@ -132,6 +135,11 @@ class BtseExchange(ExchangeBase):
             "user_stream_initialized":
                 self._user_stream_tracker.data_source.last_recv_time > 0 if self._trading_required else True,
         }
+
+    # @property # delete this property when testing fixed
+    # def obt_ready(self) -> bool:
+    #    get orderbook initialized status
+    #    return self._order_book_tracker._order_books_initialized.is_set()
 
     @property
     def ready(self) -> bool:
@@ -197,8 +205,13 @@ class BtseExchange(ExchangeBase):
         updating statuses and tracking user data.
         """
         self._order_book_tracker.start()
+        # need to wait for this to come back
+        # check orderbook status if started - ready state
+        print(" -- EX: post order_book_tracker.start")
+
         self._trading_rules_polling_task = safe_ensure_future(self._trading_rules_polling_loop())
         if self._trading_required:
+            print("_trading_required in btse_exchange")
             self._status_polling_task = safe_ensure_future(self._status_polling_loop())
             self._user_stream_tracker_task = safe_ensure_future(self._user_stream_tracker.start())
             self._user_stream_event_listener_task = safe_ensure_future(self._user_stream_event_listener())
@@ -231,8 +244,10 @@ class BtseExchange(ExchangeBase):
         """
         try:
             # since there is no ping endpoint, the lowest rate call is to get BTC-USDT ticker
-            #  await self._api_request("get", "public/get-ticker?instrument_name=BTC_USDT")
-            await self._api_request("get", "price?symbol=BTC-USDT")
+            print("-- EX inside check network")
+            # temporarily comment out
+            # await self._api_request(method="get", path="price?symbol=BTC-USDT")
+
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -267,7 +282,10 @@ class BtseExchange(ExchangeBase):
     # check - replace public/get-instruments
     async def _update_trading_rules(self):
         print("inside _update_trading_rules in BtseExchange")
-        market_info = await self._api_request("get", path_url="market_summary")
+        # params={'symbol':'BTC-USDT'} ###### ADD TEMPORARY
+        # market_info = await self._api_request("get", path_url="market_summary", params=params)
+        market_info = await self._api_request(method="get", path="market_summary")
+        # print(market_info)
         self._trading_rules.clear()
         self._trading_rules = self._format_trading_rules(market_info)
 
@@ -283,8 +301,8 @@ class BtseExchange(ExchangeBase):
         for rule in markets_info:
             try:
                 trading_pair = rule["symbol"]   # floats to decimal check
-                price_step = rule['minPriceIncrement']  # float
-                quantity_step = rule['minSizeIncrement']  # floats
+                price_step = Decimal(rule['minPriceIncrement'])  # TODO float - convert this to Decimal
+                quantity_step = Decimal(rule['minSizeIncrement'])  # TODO floats  - to decimal
                 result[trading_pair] = TradingRule(trading_pair,
                                                    min_price_increment=price_step,
                                                    min_base_amount_increment=quantity_step)
@@ -294,7 +312,7 @@ class BtseExchange(ExchangeBase):
 
     async def _api_request(self,
                            method: str,
-                           path_url: str,
+                           path: str,
                            params: Dict[str, Any] = {},
                            is_auth_required: bool = False) -> Dict[str, Any]:
         """
@@ -305,33 +323,46 @@ class BtseExchange(ExchangeBase):
         signature to the request.
         :returns A response in json format.
         """
-        url = f"{Constants.REST_URL}/{path_url}"
-        client = await self._http_client()
         if is_auth_required:
-            request_id = btse_utils.RequestId.generate_request_id()
-            data = {"params": params}
-            params = self._btse_auth.generate_auth_dict(path_url, request_id,
-                                                        btse_utils.get_ms_timestamp(), data)
-            headers = self._btse_auth.get_headers()
-        else:
-            headers = {"Content-Type": "application/json"}
-
-        if method == "get":
-            response = await client.get(url, headers=headers)
-        elif method == "post":
-            post_json = json.dumps(params)
-            response = await client.post(url, data=post_json, headers=headers)
-        else:
-            raise NotImplementedError
-
+            print("auth required")
+        prefix = '/api/v3.2/'
+        path_url = prefix + path
+        url = f"{Constants.REST_URL}{path_url}"
+        print(f"inside _api_request FULL URL : {url} : path_url: {path_url}")
+        # get default set of headers
+        headers = self._btse_auth.get_headers(path_url, '')
+        client = await self._http_client()
         try:
-            parsed_response = json.loads(await response.text())
+            if method == "get":
+                print(f"\n INSIDE CLIENT.GET: url: {url} params: {params}\n")
+                async with client.get(url, params=params, headers=headers) as response:
+                    result = await response.text()
+                    print(f"\n GET response: {result}")
+
+            elif method == "post":
+                jsond = json.dumps(params)
+                headers = self._btse_auth.get_headers(path_url, jsond)
+                print(f"\n INSIDE CLIENT.POST: url: {url}, json: {jsond}, headers: {headers}\n")
+                async with client.post(url, json=jsond, headers=headers) as response:
+                    result = await response.text()
+                    print(f"\n POST response: {result}")
+
+            elif method == "delete":
+                print(f"\n INSIDE DELETE order. {url}, params: {params}, headers: {headers}\n")
+                async with client.delete(url, params=params, headers=headers) as response:
+                    result = await response.text()
+                    print(f"\n DELETE response: {result}")
+            else:
+                raise NotImplementedError
+
+            parsed_response = json.loads(result)
+
         except Exception as e:
             raise IOError(f"Error parsing data from {url}. Error: {str(e)}")
         if response.status != 200:
             raise IOError(f"Error fetching data from {url}. HTTP status is {response.status}. "
                           f"Message: {parsed_response}")
-        # print(f"REQUEST: {method} {path_url} {params}")
+        print(f"REQUEST: {method} {path_url} {params}")
         # print(f"RESPONSE: {parsed_response}")
         return parsed_response
 
@@ -339,7 +370,11 @@ class BtseExchange(ExchangeBase):
         """
         Returns a price step, a minimum price increment for a given trading pair.
         """
+        print(f"get_order_price_quantum trading rule: pair {trading_pair} price: {price}")
         trading_rule = self._trading_rules[trading_pair]
+        # print("min price increment")
+        # print(trading_rule.min_price_increment)
+        # check the type returned
         return trading_rule.min_price_increment
 
     def get_order_size_quantum(self, trading_pair: str, order_size: Decimal):
@@ -350,6 +385,7 @@ class BtseExchange(ExchangeBase):
         return Decimal(trading_rule.min_base_amount_increment)
 
     def get_order_book(self, trading_pair: str) -> OrderBook:
+        print("-- EX inside get_order_book")
         if trading_pair not in self._order_book_tracker.order_books:
             raise ValueError(f"No order book exists for '{trading_pair}'.")
         return self._order_book_tracker.order_books[trading_pair]
@@ -367,6 +403,7 @@ class BtseExchange(ExchangeBase):
         """
         order_id: str = btse_utils.get_new_client_order_id(True, trading_pair)
         safe_ensure_future(self._create_order(TradeType.BUY, order_id, trading_pair, amount, order_type, price))
+        print(f"placing BUY order id: {order_id}, {trading_pair}, {str(amount)}, {order_type}, {str(price)}\n")
         return order_id
 
     def sell(self, trading_pair: str, amount: Decimal, order_type=OrderType.MARKET,
@@ -382,6 +419,7 @@ class BtseExchange(ExchangeBase):
         """
         order_id: str = btse_utils.get_new_client_order_id(False, trading_pair)
         safe_ensure_future(self._create_order(TradeType.SELL, order_id, trading_pair, amount, order_type, price))
+        print(f"placing SELL order id: {order_id}, {trading_pair}, {str(amount)}, {order_type}, {str(price)}\n\n")
         return order_id
 
     def cancel(self, trading_pair: str, order_id: str):
@@ -414,14 +452,21 @@ class BtseExchange(ExchangeBase):
         '''
         Error code market order {"errorCode":400,"message":"BADREQUEST: Size and Price should not be mixed","status":400}
         '''
-
+        print("____inside _create_order")
         if not order_type.is_limit_type():
+            print(f"Unsupported order type: {order_type}")
             raise Exception(f"Unsupported order type: {order_type}")
         trading_rule = self._trading_rules[trading_pair]
 
         amount = self.quantize_order_amount(trading_pair, amount)
         price = self.quantize_order_price(trading_pair, price)
+        print(f'amount: {amount}, price: {price}')
+        price = Decimal('%.7g' % price)  # hard code to round to 8 significant digits
+        amount = Decimal('%.7g' % amount)
+        print(f'ROUNDED amount: {amount}, price: {price}')
+
         if amount < trading_rule.min_order_size:
+            print(f'Buy order {amount} is lower than the minimum order size')
             raise ValueError(f"Buy order amount {amount} is lower than the minimum order size "
                              f"{trading_rule.min_order_size}.")
         api_params = {"symbol": trading_pair,
@@ -436,11 +481,23 @@ class BtseExchange(ExchangeBase):
                       }
         # if order_type is OrderType.LIMIT_MAKER:
         #    api_params["exec_inst"] = "POST_ONLY"
-
+        print("api_params in create order: ")
+        print(api_params)
+        print("\n")
         try:
-            order_result = await self._api_request("post", "order", api_params, True)
+            order_result = await self._api_request(method="post", path="order", params=api_params, is_auth_required=True)
+            print(f"\n\nOrder Result: {api_params}")
+            print(order_result)
+
             exchange_order_id = str(order_result["orderID"])
             tracked_order = self._in_flight_orders.get(order_id)
+
+            print(f"\nclient order id: {order_id}")
+            print(f"exchange order id: {exchange_order_id}")
+
+            if tracked_order is None:
+                print("Tracked order cannot be found")
+
             if tracked_order is not None:
                 self.logger().info(f"Created {order_type.name} {trade_type.name} order {order_id} for "
                                    f"{amount} {trading_pair}.")
@@ -449,6 +506,7 @@ class BtseExchange(ExchangeBase):
             event_tag = MarketEvent.BuyOrderCreated if trade_type is TradeType.BUY else MarketEvent.SellOrderCreated
             event_class = BuyOrderCreatedEvent if trade_type is TradeType.BUY else SellOrderCreatedEvent
 
+            print(event_tag)
             # only create a tracking order if successfully created via API
             self.start_tracking_order(order_id,
                                       None,
@@ -470,6 +528,8 @@ class BtseExchange(ExchangeBase):
         except asyncio.CancelledError:
             raise
         except Exception as e:
+            print(f"Exception thrown {e}")
+
             self.stop_tracking_order(order_id)
             self.logger().network(
                 f"Error submitting {trade_type.name} {order_type.name} order to BTSE.com for "
@@ -520,24 +580,35 @@ class BtseExchange(ExchangeBase):
         order.last_state to change to CANCELED
         """
         try:
+            print("\n INSIDE CANCEL ORDER: ")
+            '''
             tracked_order = self._in_flight_orders.get(order_id)
             if tracked_order is None:
                 raise ValueError(f"Failed to cancel order - {order_id}. Order not found.")
             if tracked_order.exchange_order_id is None:
                 await tracked_order.get_exchange_order_id()
             ex_order_id = tracked_order.exchange_order_id
+            '''
             result = await self._api_request(
-                "delete",
-                "order",
-                {"symbol": trading_pair,
-                 "orderID": ex_order_id},
-                True
+                method="delete",
+                path="order",
+                params={"symbol": trading_pair, 'orderID': order_id},
+                # params={"orderID": ex_order_id},
+                is_auth_required=True
             )
-            if result["status"] == 6:
-                if wait_for_status:
-                    from hummingbot.core.utils.async_utils import wait_til
-                    await wait_til(lambda: tracked_order.is_cancelled)
-                return order_id
+            print(f"\nCancel _api_request Response: {result}")
+            if type(result) == list:
+                code = result[0]['status']
+                msg = get_status_msg(code)
+                print(f'\nCancel Order Status Message: {msg}')
+                if msg == "ORDER_CANCELLED":
+                    # if wait_for_status:
+                    #    from hummingbot.core.utils.async_utils import wait_til
+                    #    await wait_til(lambda: tracked_order.is_cancelled)
+                    return order_id
+            else:   # error dict returned, get actual error message and return
+                msg = result['message']
+                print(f'cancelled error: {msg}')
         except asyncio.CancelledError:
             raise
         except Exception as e:
@@ -580,9 +651,14 @@ class BtseExchange(ExchangeBase):
         Calls REST API to update total and available balances.
         """
         print("inside _update_balances in btse_exchange")
+        account_info = await self._api_request(method="get",
+                                               path="user/wallet",
+                                               params={},
+                                               is_auth_required=True)
+        # print(account_info)
+
         local_asset_names = set(self._account_balances.keys())
         remote_asset_names = set()
-        account_info = await self._api_request("post", "user/wallet", {}, True)
         for account in account_info:
             asset_name = account["currency"]
             self._account_available_balances[asset_name] = Decimal(str(account["available"]))
@@ -608,28 +684,25 @@ class BtseExchange(ExchangeBase):
             tasks = []
             for tracked_order in tracked_orders:
                 order_id = await tracked_order.get_exchange_order_id()
-                tasks.append(self._api_request("post",
-                                               "user/trade_history",
-                                               {"orderId": order_id,
-                                                "startTime": self._last_poll_timestamp},
-                                               True))
+                tasks.append(self._api_request(method="post",
+                                               path="user/trade_history",
+                                               params={"orderId": order_id, "startTime": self._last_poll_timestamp},
+                                               is_auth_required=True))
             self.logger().debug(f"Polling for order status updates of {len(tasks)} orders.")
             update_results = await safe_gather(*tasks, return_exceptions=True)
+            print(" len of update_results : ", len(update_results))
 
             for update_result in update_results:
                 if isinstance(update_result, Exception):
                     raise update_result
                 if not update_result:
                     self.logger().info(f"_update_order_status result not in resp: {update_result}")
+                    print(" no trades in update_order_status")
                     continue
                 for trade_msg in update_result:
+                    print(" trade from inside _update_order_status in btse_exchange")
+                    print(trade_msg)
                     await self._process_trade_message(trade_msg)
-
-    # for rest alternative if needed - method not used right now
-    def get_active_order(id, trade_msg: Dict[str, Any]):
-        for open_trade in trade_msg:
-            if open_trade['orderID'] == id:
-                return open_trade
 
     # rest alternative if needed - check pls. add to update_order_status
     # _process_order -  open orders or none for rest api
@@ -638,7 +711,8 @@ class BtseExchange(ExchangeBase):
         Calls REST API to get open order status update for each in-flight order.
         """
         tasks = []
-        tasks.append(self._api_request("post", "user/open_orders", True))
+        # need to specify which symbol - post for all? vs get?
+        tasks.append(self._api_request(method="post", path="user/open_orders", params={}, is_auth_required=True))
         self.logger().debug(f"Polling for open order status updates of {len(tasks)} orders.")
         update_results = await safe_gather(*tasks, return_exceptions=True)
         for update_result in update_results:
@@ -648,6 +722,7 @@ class BtseExchange(ExchangeBase):
                 self.logger().info(f"_get_open_order_status result not in resp: {update_result}")
                 continue
             for trade_msg in update_result:
+                print("trade_msg from get_open_order_status")
                 await self._process_order_message(trade_msg)
 
     # for btse, filled completed orders with fees (tradehistory)
@@ -682,6 +757,7 @@ class BtseExchange(ExchangeBase):
             return
         tracked_order = self._in_flight_orders[client_order_id]
         # Update order execution status
+        print(f"_process_order {order_msg}")
         tracked_order.last_state = order_msg["status"]  # websocket or REST: order_msg['orderState']
         if tracked_order.is_cancelled:
             self.logger().info(f"Successfully cancelled order {client_order_id}.")
@@ -814,6 +890,8 @@ class BtseExchange(ExchangeBase):
         Is called automatically by the clock for each clock's tick (1 second by default).
         It checks if status polling task is due for execution.
         """
+        print("user stream tracker last recv time")
+        print(self._user_stream_tracker.last_recv_time)
         now = time.time()
         poll_interval = (self.SHORT_POLL_INTERVAL
                          if now - self._user_stream_tracker.last_recv_time > 60.0
@@ -863,7 +941,7 @@ class BtseExchange(ExchangeBase):
         """
         async for event_message in self._iter_user_event_queue():
             try:
-                print("inside _user_stream_event_listener in btse_exchange: event_message")
+                print("inside _USER_STREAM_EVENT_LISTENER in btse_exchange: event_message")
                 print(event_message)
                 if "notificationApi" not in event_message["topic"]:
                     continue
