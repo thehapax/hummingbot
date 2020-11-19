@@ -327,7 +327,7 @@ class BtseExchange(ExchangeBase):
             print("auth required")
         prefix = '/api/v3.2/'
         path_url = prefix + path
-        url = f"{Constants.REST_URL}{path_url}"
+        url = f"{Constants.REST_URL}{path}"
         print(f"inside _api_request FULL URL : {url} : path_url: {path_url}")
         # get default set of headers
         headers = self._btse_auth.get_headers(path_url, '')
