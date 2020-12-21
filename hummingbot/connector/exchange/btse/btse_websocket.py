@@ -95,8 +95,9 @@ class BtseWebsocket(RequestId):
             payload['op'] = 'authKeyExpires'
             payload['args'] = auth['args']
 
-        print(str(payload))
         await self._client.send(ujson.dumps(payload))
+        print(str(payload))
+#        print(f'request id: {id}')
         return id
 
     # request via websocket

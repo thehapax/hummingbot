@@ -6,6 +6,15 @@ import hummingbot.connector.exchange.btse.btse_constants as Constants
 import ujson
 
 
+def get_status_msg(code):
+    msg = ''
+    try:
+        msg = Constants.BTSE_ENUM[code]
+    except Exception as e:
+        print(e)
+    return msg
+
+
 def get_base(symbol):
     pairs = symbol.split('-')
     return pairs[0]
