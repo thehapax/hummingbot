@@ -84,6 +84,7 @@ class OrderBookTracker(ABC):
         }
 
     def start(self):
+        print("inside order_book_tracker start")
         self.stop()
         self._init_order_books_task = safe_ensure_future(
             self._init_order_books()
@@ -109,6 +110,7 @@ class OrderBookTracker(ABC):
         self._update_last_trade_prices_task = safe_ensure_future(
             self._update_last_trade_prices_loop()
         )
+        print("START COMPLETE - order_book_tracker start")
 
     def stop(self):
         if self._init_order_books_task is not None:
@@ -170,14 +172,24 @@ class OrderBookTracker(ABC):
         """
         Initialize order books
         """
+        print(" =======> order_book_tracker: initialize order books ========")
         for index, trading_pair in enumerate(self._trading_pairs):
+            print("inside initializing loop for orderbooks")
             self._order_books[trading_pair] = await self._data_source.get_new_order_book(trading_pair)
+            print("GOT !!!!!!!!!! Orderbook")
             self._tracking_message_queues[trading_pair] = asyncio.Queue()
+            print(f"got tracking mssages queue: {trading_pair}")
             self._tracking_tasks[trading_pair] = safe_ensure_future(self._track_single_book(trading_pair))
+            print("SUCCESS --- got track single book from trading pair...")
+
             self.logger().info(f"Initialized order book for {trading_pair}. "
                                f"{index + 1}/{len(self._trading_pairs)} completed.")
             await asyncio.sleep(1)
+        print("\n\n =====>> outisde of order_book_tracker initialized START LOOP === ")
         self._order_books_initialized.set()
+        print(" READY STATE ------ order_book_tracker is........... ")
+        print(self.ready)
+#        print("\n\n")
 
     async def _order_book_diff_router(self):
         """
@@ -314,8 +326,8 @@ class OrderBookTracker(ABC):
                 raise
             except Exception:
                 self.logger().network(
-                    f"Unexpected error routing order book messages.",
+                    "Unexpected error routing order book messages.",
                     exc_info=True,
-                    app_warning_msg=f"Unexpected error routing order book messages. Retrying after 5 seconds."
+                    app_warning_msg="Unexpected error routing order book messages. Retrying after 5 seconds."
                 )
                 await asyncio.sleep(5.0)
