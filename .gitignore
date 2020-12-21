@@ -67,3 +67,6 @@ stash
 archive
 stash
 scratch
+.env
+*~
+scratch.py
