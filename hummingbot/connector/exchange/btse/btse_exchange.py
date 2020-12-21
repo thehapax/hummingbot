@@ -330,24 +330,26 @@ class BtseExchange(ExchangeBase):
         url = f"{Constants.REST_URL}{path}"
         print(f"inside _api_request FULL URL : {url} : path_url: {path_url}")
         # get default set of headers
-        headers = self._btse_auth.get_headers(path_url, '')
         client = await self._http_client()
         try:
             if method == "get":
-                print(f"\n INSIDE CLIENT.GET: url: {url} params: {params}\n")
+                headers = self._btse_auth.get_headers(path_url, '')
                 async with client.get(url, params=params, headers=headers) as response:
+                    print(f"\n INSIDE CLIENT.GET: url: {url} params: {params} header: {headers}\n")
                     result = await response.text()
-                    print(f"\n GET response: {result}")
+                    # print(f"\n GET response: {result}")
 
             elif method == "post":
                 jsond = json.dumps(params)
                 headers = self._btse_auth.get_headers(path_url, jsond)
                 print(f"\n INSIDE CLIENT.POST: url: {url}, json: {jsond}, headers: {headers}\n")
-                async with client.post(url, json=jsond, headers=headers) as response:
+                async with client.request('post', url=url, json=jsond, headers=headers) as response:
+                    # async with client.post(url, json=jsond, headers=headers) as response:
                     result = await response.text()
                     print(f"\n POST response: {result}")
 
             elif method == "delete":
+                headers = self._btse_auth.get_headers(path_url, '')
                 print(f"\n INSIDE DELETE order. {url}, params: {params}, headers: {headers}\n")
                 async with client.delete(url, params=params, headers=headers) as response:
                     result = await response.text()
@@ -402,8 +404,8 @@ class BtseExchange(ExchangeBase):
         :returns A new internal order id
         """
         order_id: str = btse_utils.get_new_client_order_id(True, trading_pair)
-        safe_ensure_future(self._create_order(TradeType.BUY, order_id, trading_pair, amount, order_type, price))
         print(f"placing BUY order id: {order_id}, {trading_pair}, {str(amount)}, {order_type}, {str(price)}\n")
+        safe_ensure_future(self._create_order(TradeType.BUY, order_id, trading_pair, amount, order_type, price))
         return order_id
 
     def sell(self, trading_pair: str, amount: Decimal, order_type=OrderType.MARKET,
@@ -431,6 +433,14 @@ class BtseExchange(ExchangeBase):
         """
         safe_ensure_future(self._execute_cancel(trading_pair, order_id))
         return order_id
+
+    def quantize_order_amount(self, trading_pair: str, amount: Decimal) -> Decimal:
+        """
+        Applies trading rule to quantize order amount.
+        """
+        round_amount = round(amount, 3)
+        print(f'BTSE quantize_order_amount OVERRIDE  : {round_amount}')
+        return round_amount
 
     # check for btse.com - using POST method from REST API to create orders
     async def _create_order(self,
@@ -460,15 +470,16 @@ class BtseExchange(ExchangeBase):
 
         amount = self.quantize_order_amount(trading_pair, amount)
         price = self.quantize_order_price(trading_pair, price)
-        print(f'amount: {amount}, price: {price}')
-        price = Decimal('%.7g' % price)  # hard code to round to 8 significant digits
-        amount = Decimal('%.7g' % amount)
-        print(f'ROUNDED amount: {amount}, price: {price}')
+        print(f'Quantized amount: {amount}, price: {price}')
+#        price = Decimal('%.7g' % price)  # hard code to round to 8 significant digits
+#        amount = Decimal('%.7g' % amount)
+#        print(f'ROUNDED amount: {amount}, price: {price}')
 
         if amount < trading_rule.min_order_size:
             print(f'Buy order {amount} is lower than the minimum order size')
             raise ValueError(f"Buy order amount {amount} is lower than the minimum order size "
                              f"{trading_rule.min_order_size}.")
+
         api_params = {"symbol": trading_pair,
                       "side": trade_type.name,
                       "type": "LIMIT",
@@ -479,6 +490,14 @@ class BtseExchange(ExchangeBase):
                       "txType": "LIMIT",
                       "clOrderID": order_id,
                       }
+        '''
+        api_params = {"symbol": "BTC-USDT",
+                    "side": "BUY",
+                    "type": "LIMIT",
+                    "price": "17138.5",
+                    "size": "0.123",
+                    "clOrderID": "buy-BTC-USDT-16015706",}
+        '''
         # if order_type is OrderType.LIMIT_MAKER:
         #    api_params["exec_inst"] = "POST_ONLY"
         print("api_params in create order: ")
