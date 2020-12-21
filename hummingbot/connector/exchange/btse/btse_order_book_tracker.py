@@ -52,7 +52,8 @@ class BtseOrderBookTracker(OrderBookTracker):
         """
         Update an order book with changes from the latest batch of received messages
         """
-        print("==== inside _track_single_book in btse_order_book_tracker =====")
+        # print(f"\n==== OB: inside _TRACK_SINGLE_BOOK: {trading_pair} -- in btse_order_book_tracker ===== \n")
+
         past_diffs_window: Deque[BtseOrderBookMessage] = deque()
         self._past_diffs_windows[trading_pair] = past_diffs_window
 
@@ -72,9 +73,12 @@ class BtseOrderBookTracker(OrderBookTracker):
                     message = saved_messages.popleft()
                 else:
                     message = await message_queue.get()
+                # print("====== OB: saved messages TRACK_SINGLE_BOOK in btse_order_book_tracker\n")
+                # print(saved_messages)
 
+                # print(message.type)
                 if message.type is OrderBookMessageType.DIFF:
-                    print(">>>>>> inside message.type is OrderBookMessageType.DIFF  <<<<<<<")
+                    # print(">>>>>> OB: DIFF - TRACK inside message.type is OrderBookMessageType.DIFF  <<<<<<<")
                     bids, asks = active_order_tracker.convert_diff_message_to_order_book_row(message)
                     order_book.apply_diffs(bids, asks, message.update_id)
                     past_diffs_window.append(message)
@@ -85,22 +89,29 @@ class BtseOrderBookTracker(OrderBookTracker):
                     # Output some statistics periodically.
                     now: float = time.time()
                     if int(now / 60.0) > int(last_message_timestamp / 60.0):
+                        # print(f"Processed {diff_messages_accepted} order book diffs for {trading_pair}")
                         self.logger().debug("Processed %d order book diffs for %s.",
                                             diff_messages_accepted, trading_pair)
                         diff_messages_accepted = 0
                     last_message_timestamp = now
                 elif message.type is OrderBookMessageType.SNAPSHOT:
-                    print(">>>>>> inside message.type is OrderBookMessage.Type.SNAPSHOT  <<<<<<<")
+                    # print(">>>>>> OB: SNAPSHOT- TRACK inside message.type is OrderBookMessage.Type.SNAPSHOT  <<<<<<<")
                     past_diffs: List[BtseOrderBookMessage] = list(past_diffs_window)
+                    # print(" OB: PAST DIFFS: ")
+                    # print(past_diffs)
                     # only replay diffs later than snapshot, first update active order with snapshot then replay diffs
                     replay_position = bisect.bisect_right(past_diffs, message)
                     replay_diffs = past_diffs[replay_position:]
                     s_bids, s_asks = active_order_tracker.convert_snapshot_message_to_order_book_row(message)
+                    # print("OB: s_bids, s_asks")
+                    # print(s_bids)
+                    # print("OB: message update id: " + str(message.update_id))
                     order_book.apply_snapshot(s_bids, s_asks, message.update_id)
                     for diff_message in replay_diffs:
+                        # print("inside diff_message in REPLAY_DIFFS ==================>>>>>> ")
                         d_bids, d_asks = active_order_tracker.convert_diff_message_to_order_book_row(diff_message)
                         order_book.apply_diffs(d_bids, d_asks, diff_message.update_id)
-
+                    # print(f">>>>>>>> OB: Processed order book snapshot for {trading_pair}")
                     self.logger().debug("Processed order book snapshot for %s.", trading_pair)
             except asyncio.CancelledError:
                 raise
@@ -111,3 +122,81 @@ class BtseOrderBookTracker(OrderBookTracker):
                     app_warning_msg="Unexpected error processing order book messages. Retrying after 5 seconds."
                 )
                 await asyncio.sleep(5.0)
+
+    '''
+    async def _order_book_diff_router(self):
+        """
+        Route the real-time order book diff messages to the correct order book.
+        """
+        print("======= OB: INSIDE _order_book_diff_router =========\n\n")
+        last_message_timestamp: float = time.time()
+        messages_queued: int = 0
+        messages_accepted: int = 0
+        messages_rejected: int = 0
+        while True:
+            try:
+                order_book_message: BtseOrderBookMessage = await self._order_book_diff_stream.get()
+                trading_pair: str = order_book_message.trading_pair
+                print("\n\n ***** ============")
+                print(f"OB - Diff Router BTSE OrderBookTracker: ==== > trading pair: {trading_pair}\n")
+                print(order_book_message)
+                #print("================\n\n")
+
+                print("\n\n _tracking_message_queues \n")
+                print(self._tracking_message_queues)
+
+                if trading_pair not in self._tracking_message_queues:
+                    print(">>>>>>>>>>>> NOT IN TRACKING MESSAGE QUEUES - ADD <<<<<<<<<<<<<<")
+                    print("OB -- Saving messages queues - Diff Router")
+                    messages_queued += 1
+                    # Save diff messages received before snapshots are ready
+                    # only this line different
+                    self._saved_message_queues[trading_pair].append(order_book_message)
+                    continue
+
+                message_queue: asyncio.Queue = self._tracking_message_queues[trading_pair]
+                # Check the order book's initial update ID. If it's larger, don't bother.
+                order_book: BtseOrderBook = self._order_books[trading_pair]
+                print("OB - order_book.snapshot_uid : " + str(order_book.snapshot_uid))
+                print("OB - ob_message.update_id : "  + str(order_book_message.update_id))
+
+                if order_book.snapshot_uid > order_book_message.update_id: # message should be greater than snapshot?
+                    print("OB - snapshot_uid >  update_id \n\n")
+                    messages_rejected += 1
+                    continue
+
+                print("OB  - PASS - no reject order_book_message, therefore add to _tracking_message_queues ")
+                await message_queue.put(order_book_message)
+                messages_accepted += 1
+
+                # Log some statistics.
+                now: float = time.time()
+                if int(now / 60.0) > int(last_message_timestamp / 60.0):
+                    print(f"Diff messages processed: {messages_accepted}, rejected: {messages_rejected}, queued: {messages_queued}")
+                    self.logger().debug("Diff messages processed: %d, rejected: %d, queued: %d",
+                                        messages_accepted,
+                                        messages_rejected,
+                                        messages_queued)
+                    messages_accepted = 0
+                    messages_rejected = 0
+                    messages_queued = 0
+
+                last_message_timestamp = now
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                self.logger().network(
+                    f'{"Unexpected error routing order book messages."}',
+                    exc_info=True,
+                    app_warning_msg=f'{"Unexpected error routing order book messages. Retrying after 5 seconds."}'
+                )
+                await asyncio.sleep(5.0)
+'''
+
+    '''
+    @property
+    def data_source(self) -> OrderBookTrackerDataSource:
+        if not self._data_source:
+            self._data_source = BtseAPIOrderBookDataSource(trading_pairs=self._trading_pairs)
+        return self._data_source
+    '''

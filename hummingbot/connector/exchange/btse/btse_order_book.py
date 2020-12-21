@@ -15,16 +15,16 @@ from hummingbot.core.data_type.order_book_message import (
 )
 from hummingbot.connector.exchange.btse.btse_order_book_message import BtseOrderBookMessage
 
-_logger = None
+_btob_logger = None
 
 
 class BtseOrderBook(OrderBook):
     @classmethod
     def logger(cls) -> HummingbotLogger:
-        global _logger
-        if _logger is None:
-            _logger = logging.getLogger(__name__)
-        return _logger
+        global _btob_logger
+        if _btob_logger is None:
+            _btob_logger = logging.getLogger(__name__)
+        return _btob_logger
 
     @classmethod
     def snapshot_message_from_exchange(cls,
