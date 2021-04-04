@@ -57,9 +57,9 @@ class BtseExchange(ExchangeBase):
     trading functionality.
     """
     API_CALL_TIMEOUT = 10.0
-    SHORT_POLL_INTERVAL = 5.0
-    UPDATE_ORDER_STATUS_MIN_INTERVAL = 10.0
-    LONG_POLL_INTERVAL = 120.0
+    SHORT_POLL_INTERVAL = 2.0  # 5.0
+    UPDATE_ORDER_STATUS_MIN_INTERVAL = 1.0  # 10.0
+    LONG_POLL_INTERVAL = 12.0  # 120.0
 
     MAKER_FEE_PERCENTAGE_DEFAULT = 0.0005
     TAKER_FEE_PERCENTAGE_DEFAULT = 0.001
@@ -243,11 +243,16 @@ class BtseExchange(ExchangeBase):
         the network connection. Simply ping the network (or call any light weight public API).
         """
         try:
-            # since there is no ping endpoint, the lowest rate call is to get BTC-USDT ticker
             print("-- EX inside check network")
-            # temporarily comment out
+            await safe_gather(
+                self._update_balances(),
+                self._update_order_status(),)
+            # rest api check only
+            # todo - open orders, only & filled orders
+            # no cancel or error status
+            # use for testing only
+            # since there is no ping endpoint, the lowest rate call is to get BTC-USDT ticker
             # await self._api_request(method="get", path="price?symbol=BTC-USDT")
-
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -269,10 +274,11 @@ class BtseExchange(ExchangeBase):
         while True:
             try:
                 await self._update_trading_rules()
-                await asyncio.sleep(60)
+                await asyncio.sleep(120)  # originally 60
             except asyncio.CancelledError:
                 raise
             except Exception as e:
+                print(f'EXCEPTION TRADING RULES {e} \n\n')
                 self.logger().network(f"Unexpected error while fetching trading rules. Error: {str(e)}",
                                       exc_info=True,
                                       app_warning_msg="Could not fetch new trading rules from BTSE.com. "
@@ -282,9 +288,13 @@ class BtseExchange(ExchangeBase):
     # check - replace public/get-instruments
     async def _update_trading_rules(self):
         print("inside _update_trading_rules in BtseExchange")
-        # params={'symbol':'BTC-USDT'} ###### ADD TEMPORARY
-        # market_info = await self._api_request("get", path_url="market_summary", params=params)
-        market_info = await self._api_request(method="get", path="market_summary")
+        # params={'symbol':'BTC-USDT'} ######  temporary for testing, can delete anytime
+        # get all markets
+        params = {}
+        market_info = await self._api_request(method="get",
+                                              path="market_summary",
+                                              params=params,
+                                              is_auth_required=False)
         # print(market_info)
         self._trading_rules.clear()
         self._trading_rules = self._format_trading_rules(market_info)
@@ -293,20 +303,29 @@ class BtseExchange(ExchangeBase):
     def _format_trading_rules(self, markets_info: Dict[str, Any]) -> Dict[str, TradingRule]:
         """
         Converts json API response into a dictionary of trading rules.
+        For BTSE, don't convert floats to decimal, to preserve format of float
         :param markets_info: The json API response
         :return A dictionary of trading rules.
-
         """
         result = {}
         for rule in markets_info:
             try:
-                trading_pair = rule["symbol"]   # floats to decimal check
-                price_step = Decimal(rule['minPriceIncrement'])  # TODO float - convert this to Decimal
-                quantity_step = Decimal(rule['minSizeIncrement'])  # TODO floats  - to decimal
+                trading_pair = rule["symbol"]
+                price_step = rule['minPriceIncrement']
+                quantity_step = rule['minSizeIncrement']
+                minordersize = rule['minOrderSize']
+                maxordersize = rule['maxOrderSize']
+                minvalidprice = rule['minValidPrice']
+
                 result[trading_pair] = TradingRule(trading_pair,
                                                    min_price_increment=price_step,
-                                                   min_base_amount_increment=quantity_step)
-            except Exception:
+                                                   min_base_amount_increment=quantity_step,
+                                                   min_quote_amount_increment=quantity_step,
+                                                   min_order_size=minordersize,
+                                                   max_order_size=maxordersize,
+                                                   min_order_value=minvalidprice)
+            except Exception as e:
+                print(f'trading rules EXCEPTION: {e}')
                 self.logger().error(f"Error parsing the trading pair rule {rule}. Skipping.", exc_info=True)
         return result
 
@@ -323,35 +342,41 @@ class BtseExchange(ExchangeBase):
         signature to the request.
         :returns A response in json format.
         """
-        if is_auth_required:
-            print("auth required")
         prefix = '/api/v3.2/'
         path_url = prefix + path
         url = f"{Constants.REST_URL}{path}"
-        print(f"inside _api_request FULL URL : {url} : path_url: {path_url}")
+
+        print(f'_api_request URL {url}')
+        headers = {'Accept': 'application/json;charset=UTF-8'}
+
+        if is_auth_required:
+            print("auth required")
+            headers = self._btse_auth.get_headers(path_url, '')
+            # does it really work?
+            #  headers=make_headers(path_url, '')
+        print("inside_api_request -- \n")
+        # print(f"inside _api_request FULL URL : {url} : path_url: {path_url} \n\t param =  {params} headers = {headers} ")
         # get default set of headers
         client = await self._http_client()
         try:
             if method == "get":
-                headers = self._btse_auth.get_headers(path_url, '')
-                async with client.get(url, params=params, headers=headers) as response:
-                    print(f"\n INSIDE CLIENT.GET: url: {url} params: {params} header: {headers}\n")
+                async with client.request('get', url=url, params=params, headers=headers) as response:
+                    # print(f"\n INSIDE CLIENT.GET: url: {url} params: {params} header: {headers}\n")
                     result = await response.text()
                     # print(f"\n GET response: {result}")
 
             elif method == "post":
                 jsond = json.dumps(params)
                 headers = self._btse_auth.get_headers(path_url, jsond)
-                print(f"\n INSIDE CLIENT.POST: url: {url}, json: {jsond}, headers: {headers}\n")
-                async with client.request('post', url=url, json=jsond, headers=headers) as response:
-                    # async with client.post(url, json=jsond, headers=headers) as response:
+                # print(f"\n INSIDE CLIENT.POST: url: {url}, json: {params}, headers: {headers}\n")
+                async with client.request('post', url=url, json=params, headers=headers) as response:
                     result = await response.text()
                     print(f"\n POST response: {result}")
 
             elif method == "delete":
                 headers = self._btse_auth.get_headers(path_url, '')
-                print(f"\n INSIDE DELETE order. {url}, params: {params}, headers: {headers}\n")
-                async with client.delete(url, params=params, headers=headers) as response:
+                # print(f"\n INSIDE DELETE order. {url}, params: {params}, headers: {headers}\n")
+                async with client.request('delete', url=url, params=params, headers=headers) as response:
                     result = await response.text()
                     print(f"\n DELETE response: {result}")
             else:
@@ -360,8 +385,10 @@ class BtseExchange(ExchangeBase):
             parsed_response = json.loads(result)
 
         except Exception as e:
+            print(f'Exception in _api_request : {e}')
             raise IOError(f"Error parsing data from {url}. Error: {str(e)}")
         if response.status != 200:
+            print("Exception in _api_request response status !=200 ")
             raise IOError(f"Error fetching data from {url}. HTTP status is {response.status}. "
                           f"Message: {parsed_response}")
         print(f"REQUEST: {method} {path_url} {params}")
@@ -372,19 +399,32 @@ class BtseExchange(ExchangeBase):
         """
         Returns a price step, a minimum price increment for a given trading pair.
         """
-        print(f"get_order_price_quantum trading rule: pair {trading_pair} price: {price}")
         trading_rule = self._trading_rules[trading_pair]
-        # print("min price increment")
-        # print(trading_rule.min_price_increment)
-        # check the type returned
-        return trading_rule.min_price_increment
+        # print(f'\n >>>> TRADING RULES : {trading_rule}')
+        minpriceinc = trading_rule.min_price_increment
+        minvalidprice = trading_rule.min_order_value
+        print(f'\nget_order_price_quantum: {trading_pair}, price: {price},' +
+              f'minpriceinc: {minpriceinc}, minvalidprice: {minvalidprice}')
+        price_quantized = btse_utils.adjust_increment(price, minpriceinc)
+
+        if price_quantized < minvalidprice:
+            price_quantized = minvalidprice
+        print(f'>> get_order_price_quantum - Quantized Price : {price_quantized}')
+        return price_quantized
 
     def get_order_size_quantum(self, trading_pair: str, order_size: Decimal):
         """
         Returns an order amount step, a minimum amount increment for a given trading pair.
         """
         trading_rule = self._trading_rules[trading_pair]
-        return Decimal(trading_rule.min_base_amount_increment)
+        minsize = trading_rule.min_order_size
+        maxsize = trading_rule.max_order_size
+        minsizeinc = trading_rule.min_base_amount_increment
+        print(f"get_order_size_quantum trading rule: pair {trading_pair} " +
+              f" price: {order_size}, minsize: {minsize}")
+        print(f'\n\tmax: {maxsize}, minsizeinc: {minsizeinc}\n')
+        size_quantized = btse_utils.bounded_size(order_size, minsize, maxsize, minsizeinc)
+        return size_quantized
 
     def get_order_book(self, trading_pair: str) -> OrderBook:
         print("-- EX inside get_order_book")
@@ -431,16 +471,27 @@ class BtseExchange(ExchangeBase):
         :param trading_pair: The market (e.g. BTC-USDT) of the order.
         :param order_id: The internal order id (also called client_order_id)
         """
-        safe_ensure_future(self._execute_cancel(trading_pair, order_id))
+        safe_ensure_future(self._execute_cancel(trading_pair, order_id, True))
         return order_id
 
     def quantize_order_amount(self, trading_pair: str, amount: Decimal) -> Decimal:
         """
         Applies trading rule to quantize order amount.
         """
-        round_amount = round(amount, 3)
-        print(f'BTSE quantize_order_amount OVERRIDE  : {round_amount}')
-        return round_amount
+        # round_amount = round(amount, 3)
+        print("\n\t Inside Quantize Order SIZE/AMOUNT \n")
+        quantize_amount = self.get_order_size_quantum(trading_pair, amount)
+        print(f'BTSE quantize_order_amount OVERRIDE  : {quantize_amount}')
+        return quantize_amount
+
+    def quantize_order_price(self, trading_pair: str, price: Decimal) -> Decimal:
+        """
+        Applies trading rule to quantize order price.
+        """
+        print("\n\t Inside Quantize Order Price \n")
+        quantize_price = self.get_order_price_quantum(trading_pair, price)
+        print(f'BTSE quantize_order_price OVERRIDE  : {quantize_price}')
+        return quantize_price
 
     # check for btse.com - using POST method from REST API to create orders
     async def _create_order(self,
@@ -470,10 +521,8 @@ class BtseExchange(ExchangeBase):
 
         amount = self.quantize_order_amount(trading_pair, amount)
         price = self.quantize_order_price(trading_pair, price)
-        print(f'Quantized amount: {amount}, price: {price}')
-#        price = Decimal('%.7g' % price)  # hard code to round to 8 significant digits
-#        amount = Decimal('%.7g' % amount)
-#        print(f'ROUNDED amount: {amount}, price: {price}')
+
+        print(f'\n\n RETURNED QUANTIZED amount: {amount}, price: {price}')
 
         if amount < trading_rule.min_order_size:
             print(f'Buy order {amount} is lower than the minimum order size')
@@ -483,36 +532,34 @@ class BtseExchange(ExchangeBase):
         api_params = {"symbol": trading_pair,
                       "side": trade_type.name,
                       "type": "LIMIT",
-                      "price": f"{price:f}",
-                      "size": f"{amount:f}",
+                      "price": f"{price}",
+                      "size": f"{amount}",
                       "triggerPrice": 0,
                       "time_in_force": "GTC",
                       "txType": "LIMIT",
                       "clOrderID": order_id,
                       }
-        '''
-        api_params = {"symbol": "BTC-USDT",
-                    "side": "BUY",
-                    "type": "LIMIT",
-                    "price": "17138.5",
-                    "size": "0.123",
-                    "clOrderID": "buy-BTC-USDT-16015706",}
-        '''
+
         # if order_type is OrderType.LIMIT_MAKER:
         #    api_params["exec_inst"] = "POST_ONLY"
         print("api_params in create order: ")
         print(api_params)
         print("\n")
         try:
-            order_result = await self._api_request(method="post", path="order", params=api_params, is_auth_required=True)
-            print(f"\n\nOrder Result: {api_params}")
-            print(order_result)
+            order_result = await self._api_request(method="post",
+                                                   path="order",
+                                                   params=api_params,
+                                                   is_auth_required=True)
+            print(f"\n\nOrder Result: {order_result}\n\n")
 
-            exchange_order_id = str(order_result["orderID"])
+            exchange_order_id = order_result[0]['orderID']
             tracked_order = self._in_flight_orders.get(order_id)
+            print(f' ===== in flight orders pass1 ===== exchange_order_id {exchange_order_id} \n')
+            v = self._in_flight_orders.values()
+            print(v)
 
-            print(f"\nclient order id: {order_id}")
-            print(f"exchange order id: {exchange_order_id}")
+            print(f"\n\t Client order id: {order_id}")
+            print(f"\n\t Exchange order id: {exchange_order_id}")
 
             if tracked_order is None:
                 print("Tracked order cannot be found")
@@ -525,10 +572,11 @@ class BtseExchange(ExchangeBase):
             event_tag = MarketEvent.BuyOrderCreated if trade_type is TradeType.BUY else MarketEvent.SellOrderCreated
             event_class = BuyOrderCreatedEvent if trade_type is TradeType.BUY else SellOrderCreatedEvent
 
-            print(event_tag)
+            print(f' \n\n EVENT TAG: {event_tag}, \n EVENT CLASS: {event_class}\n')
             # only create a tracking order if successfully created via API
+
             self.start_tracking_order(order_id,
-                                      None,
+                                      exchange_order_id,
                                       trading_pair,
                                       trade_type,
                                       price,
@@ -544,6 +592,12 @@ class BtseExchange(ExchangeBase):
                                    price,
                                    order_id
                                ))
+
+            print(' ===== in flight orders - post add ===== \n')
+            v = self._in_flight_orders.values()
+            print(v)
+            print("\n\n")
+
         except asyncio.CancelledError:
             raise
         except Exception as e:
@@ -599,31 +653,42 @@ class BtseExchange(ExchangeBase):
         order.last_state to change to CANCELED
         """
         try:
-            print("\n INSIDE CANCEL ORDER: ")
-            '''
+            print(f"\n INSIDE CANCEL ORDER: trading_pair {trading_pair} order_id: {order_id}")
+
             tracked_order = self._in_flight_orders.get(order_id)
+            print(f'\n Cancel tracked order: {tracked_order}, order_id: {order_id}\n')
             if tracked_order is None:
-                raise ValueError(f"Failed to cancel order - {order_id}. Order not found.")
+                raise ValueError(f"Failed to cancel order id: {order_id}. Order not found.")
             if tracked_order.exchange_order_id is None:
                 await tracked_order.get_exchange_order_id()
             ex_order_id = tracked_order.exchange_order_id
-            '''
+
+            print(f'\n\n ex_order_id : {ex_order_id}')
+            # ex_order_id - as option in _api_request 2/18/21
+
             result = await self._api_request(
                 method="delete",
                 path="order",
-                params={"symbol": trading_pair, 'orderID': order_id},
-                # params={"orderID": ex_order_id},
+                params={"symbol": trading_pair, 'clOrderID': order_id},  # client order ID
                 is_auth_required=True
             )
             print(f"\nCancel _api_request Response: {result}")
             if type(result) == list:
                 code = result[0]['status']
                 msg = get_status_msg(code)
-                print(f'\nCancel Order Status Message: {msg}')
+                print(f'\nCancel Order Status Message: {msg}, order_id : {order_id}')
                 if msg == "ORDER_CANCELLED":
-                    # if wait_for_status:
-                    #    from hummingbot.core.utils.async_utils import wait_til
-                    #    await wait_til(lambda: tracked_order.is_cancelled)
+                    # todo - test 3/7/21 for last unit test in exch
+                    if wait_for_status:
+                        from hummingbot.core.utils.async_utils import wait_til
+                        await wait_til(lambda: tracked_order.is_cancelled)
+                    tracked_order = self._in_flight_orders[order_id]
+                    # added trigger event and stop tracking order 2/20/21
+                    self.trigger_event(MarketEvent.OrderCancelled,
+                                       OrderCancelledEvent(self.current_timestamp, order_id))
+                    tracked_order.cancelled_event.set()
+                    self.stop_tracking_order(order_id)
+                    self.logger().info(f"Successfully cancelled order {order_id}.")
                     return order_id
             else:   # error dict returned, get actual error message and return
                 msg = result['message']
@@ -631,6 +696,7 @@ class BtseExchange(ExchangeBase):
         except asyncio.CancelledError:
             raise
         except Exception as e:
+            print(f'Exception in Cancelling order: {e}')
             self.logger().network(
                 f"Failed to cancel order {order_id}: {str(e)}",
                 exc_info=True,
@@ -640,11 +706,13 @@ class BtseExchange(ExchangeBase):
 
     async def _status_polling_loop(self):
         """
-        Periodically update user balances and order status via REST API. This serves as a fallback measure for web
-        socket API updates.
+        Periodically update user balances and order status via REST API.
+        This usually serves as a fallback measure for web socket API updates.
+        However, since BTSE does not have sufficient websocket data pushes, we poll here
         """
         while True:
             try:
+                print("inside _status_polling_loop")
                 self._poll_notifier = asyncio.Event()
                 await self._poll_notifier.wait()
                 await safe_gather(
@@ -664,7 +732,7 @@ class BtseExchange(ExchangeBase):
                                                       "Check API key and network connection.")
                 await asyncio.sleep(0.5)
 
-    # cross check for btse.com
+    # cross check for btse.com - looks OK 2/18/21
     async def _update_balances(self):
         """
         Calls REST API to update total and available balances.
@@ -689,104 +757,139 @@ class BtseExchange(ExchangeBase):
             del self._account_available_balances[asset_name]
             del self._account_balances[asset_name]
 
-    # todo for btse.com
+    # todo for btse.com - 2/18/21 All methods below - Need to check in tests
+    # possibly should use Client OrderID or OrderID? can lead to multiple orders?
     async def _update_order_status(self):
         """
         Calls REST API to get status update for each in-flight order.
         """
-        print("inside _update_order_status in btse_exchange")
+        print("\n\n UPDATE ORDER STATUS -- inside _update_order_status in btse_exchange")
         last_tick = self._last_poll_timestamp / self.UPDATE_ORDER_STATUS_MIN_INTERVAL
         current_tick = self.current_timestamp / self.UPDATE_ORDER_STATUS_MIN_INTERVAL
 
-        if current_tick > last_tick and len(self._in_flight_orders) > 0:
+        print(f'last_tick:{last_tick}, current tick: {current_tick}\n ')
+        print(f'len inflight: {len(self.in_flight_orders)}')
+
+        # if current_tick > last_tick and len(self._in_flight_orders) > 0:
+        if len(self._in_flight_orders) > 0:
             tracked_orders = list(self._in_flight_orders.values())
+            print(f'len of tracked orders: {len(self.in_flight_orders)}\n')
             tasks = []
             for tracked_order in tracked_orders:
                 order_id = await tracked_order.get_exchange_order_id()
-                tasks.append(self._api_request(method="post",
-                                               path="user/trade_history",
-                                               params={"orderId": order_id, "startTime": self._last_poll_timestamp},
+                tasks.append(self._api_request(method="get",
+                                               path="user/open_orders",
+                                               params={"orderID": order_id},
                                                is_auth_required=True))
+                # completed orders? cancelled orders reflected
+                # canclled orders don't show up here unless in last 60 minutes
+                # not sure we need this here -> maybe in process_trade message
+                # if it doesn't work, put this section back, but should get it in process_trade_message
+                # tasks.append(self._api_request(method="get",
+                #                               path="user/trade_history",
+                #                               params={"orderID": order_id,
+                #                                       "startTime": int(self._last_poll_timestamp)},
+                #                               is_auth_required=True))
+                # make sure to check that only 1 order ID comes back
+                # if not one order then need to parse results. right now
+                # its all the orders for after startTime
+            print(f'\n _update_order_status: Polling for order status of {len(tasks)} orders\n')
             self.logger().debug(f"Polling for order status updates of {len(tasks)} orders.")
             update_results = await safe_gather(*tasks, return_exceptions=True)
-            print(" len of update_results : ", len(update_results))
+            print(f"\n\n _update_order_status: len of update_results : {len(update_results)} \n")
 
             for update_result in update_results:
                 if isinstance(update_result, Exception):
                     raise update_result
                 if not update_result:
                     self.logger().info(f"_update_order_status result not in resp: {update_result}")
-                    print(" no trades in update_order_status")
+                    print("\n No trades in update_order_status\n")
                     continue
                 for trade_msg in update_result:
-                    print(" trade from inside _update_order_status in btse_exchange")
-                    print(trade_msg)
+                    print(f"\n\n trade from inside _update_order_status in btse_exchange: {trade_msg}\n")
                     await self._process_trade_message(trade_msg)
 
-    # rest alternative if needed - check pls. add to update_order_status
-    # _process_order -  open orders or none for rest api
-    async def _get_open_order_status(self):
-        """
-        Calls REST API to get open order status update for each in-flight order.
-        """
-        tasks = []
-        # need to specify which symbol - post for all? vs get?
-        tasks.append(self._api_request(method="post", path="user/open_orders", params={}, is_auth_required=True))
-        self.logger().debug(f"Polling for open order status updates of {len(tasks)} orders.")
-        update_results = await safe_gather(*tasks, return_exceptions=True)
-        for update_result in update_results:
-            if isinstance(update_result, Exception):
-                raise update_result
-            if not update_result:
-                self.logger().info(f"_get_open_order_status result not in resp: {update_result}")
-                continue
-            for trade_msg in update_result:
-                print("trade_msg from get_open_order_status")
-                await self._process_order_message(trade_msg)
-
-    # for btse, filled completed orders with fees (tradehistory)
-    def _process_order_message(self, order_msg: Dict[str, Any]):
+    # OPTIONAL?? ###### # for btse, filled completed orders with fees (tradehistory)
+    async def _process_order_message(self, order_msg: Dict[str, Any]):
         """
         Updates in-flight order and triggers cancellation or failure event if needed.
         :param order_msg: The order response from web socket API
         (REST API not same format, only open orders)
-
-        example from notificationsAPI websocket:
-        {   'averageFillPrice': 0.0,
-                'clOrderID': 'MYOWNORDERID',
-                'fillSize': 0.0,
-                'orderID': '01d9a550-4acd-4f12-990f-ef496f325a7b',
-                'orderMode': 'MODE_BUY',
-                'orderType': 'TYPE_LIMIT',
-                'pegPriceDeviation': 1.0,
-                'price': 7010.0,
-                'size': 0.002,
-                'status': 'ORDER_INSERTED',
-                'stealth': 1.0,
-                'symbol': 'BTC-USD',
-                'timestamp': 1602229225728,
-                'triggerPrice': 7010.0,
-                'type': ''},
-                'topic': 'notificationApiV1'}
-
         """
-        print("inside _process_order_message in btse_exchange")
+        print(f"\ninside _process_order_message in btse_exchange: {order_msg}\n")
         client_order_id = order_msg["clOrderID"]
         if client_order_id not in self._in_flight_orders:
             return
         tracked_order = self._in_flight_orders[client_order_id]
-        # Update order execution status
+        # Update order execution status - adding this new section in for completed orders 2/18/21
+        # unclear if this is the right approach with notificationApi
         print(f"_process_order {order_msg}")
         tracked_order.last_state = order_msg["status"]  # websocket or REST: order_msg['orderState']
+        order_id = order_msg['orderID']
+
+        print(f'\n\n PROCESS Order Status in order_msg: {order_msg["status"]}, orderID: {order_id}')
+
+        if tracked_order.is_done:
+            print('\n\n TRACKED ORDER IS DONE')
+            self.logger().info(f"Successfully COMPLETED order {client_order_id}.")
+            print(f'\n TradeType : {tracked_order.trade_type}')
+            '''
+            trade_history  = await self._api_request(method="get",
+                                               path="user/trade_history",
+                                               params={"orderID": order_id,
+                                                       "startTime": int(self._last_poll_timestamp)},
+                                               is_auth_required=True)
+            print(f"\n\n _process_order_message: trade history {trade_history}\n\n")
+            feeCurrency = None
+            feeAmount = 0
+            # fix this section 3/7/21
+            if len(trade_history) > 0:
+                trade_hist = trade_history[0]
+                feeCurrency = trade_hist['feeCurrency']
+                feeAmount = trade_hist['feeAmount']
+            '''
+            open_orders = await self._api_request(method="get",
+                                                  path="user/open_orders",
+                                                  params={"orderID": order_id},
+                                                  is_auth_required=True)
+
+            print(f'\n\n _update_order_status open orders: {open_orders}\n\n')
+            event_tag = MarketEvent.BuyOrderCompleted if tracked_order.trade_type is TradeType.BUY else MarketEvent.SellOrderCompleted
+            event_class = BuyOrderCompletedEvent if tracked_order.trade_type is TradeType.BUY \
+                else SellOrderCompletedEvent
+            # check if these are the right paramters and how do we get them into trigger event.
+            # order_msg['symbol'] < - use this for base/quote asset
+            # fee asset, fee paid ? from completed orders, trade_history only, not in notification API
+            # execued amount base/quote?
+            # Question: do OrderCompletedEvent data get written into a log somewhere?
+            base_asset = btse_utils.get_base(tracked_order.trading_pair)
+            quote_asset = btse_utils.get_quote(tracked_order.trading_pair)
+            print(f'\nbase_asset: {base_asset}\n')
+            self.trigger_event(event_tag,
+                               event_class(timestamp=self.current_timestamp,
+                                           order_id=tracked_order.client_order_id,
+                                           base_asset=base_asset,
+                                           quote_asset=quote_asset,
+                                           fee_asset=tracked_order.fee_asset,
+                                           executed_amount_base=tracked_order.executed_amount_base,
+                                           executed_amount_quote=tracked_order.executed_amount_quote,
+                                           fee_paid=tracked_order.fee_paid,
+                                           order_type=tracked_order.order_type))
+            self.stop_tracking_order(tracked_order.client_order_id)
+        # this section is not firing, why? 3/6/21
         if tracked_order.is_cancelled:
             self.logger().info(f"Successfully cancelled order {client_order_id}.")
+            print('\n\n >>>> inside tracked_order.is cancelled \n')
             self.trigger_event(MarketEvent.OrderCancelled,
                                OrderCancelledEvent(
                                    self.current_timestamp,
                                    client_order_id))
             tracked_order.cancelled_event.set()
             self.stop_tracking_order(client_order_id)
+            # TODO remove from market state
+            print('\n\n end tracked order is Cancelled ')
         elif tracked_order.is_failure:
+            print('\n\n tracker order is failure')
             self.logger().info(f"The market order {client_order_id} has failed according to order status API. "
                                f"Reason: {btse_utils.get_api_reason(order_msg['status'])}")
             # status code in API_STATUS or BTSE_ENUM
@@ -797,46 +900,50 @@ class BtseExchange(ExchangeBase):
                                    tracked_order.order_type
                                ))
             self.stop_tracking_order(client_order_id)
+            print('\n\n end tracked order is failure')
 
     # cross check  -  for fee use estimate  - data from websockets notificationApi
     async def _process_trade_message(self, trade_msg: Dict[str, Any]):
         """
         Updates in-flight order and trigger order filled event for trade message received. Triggers order completed
         event if the total executed amount equals to the specified order amount.
-        example trade history from REST API:
-          {   'base': 'BTC',
-        'clOrderID': None,
-        'feeAmount': 2e-06,
-        'feeCurrency': 'BTC',
-        'filledPrice': 10758.0,
-        'filledSize': 0.002,
-        'orderId': 'b3a65f8e-e838-4c13-adf4-62fef98504a1',
-        'orderType': 77,
-        'price': 21.516,
-        'quote': 'USD',
-        'realizedPnl': 0.0,
-        'serialId': 110947333,
-        'side': 'BUY',
-        'size': 21.516,
-        'symbol': 'BTC-USD',
-        'timestamp': 1601791330000,
-        'total': 0.0,
-        'tradeId': '1c062ffa-0386-4d63-8cff-c6f4de05a270',
-        'triggerPrice': 0.0,
-        'triggerType': 0,
-        'username': 'hapax10test',
-        'wallet': 'SPOT@'},
         """
-        print("inside process trade_message in btse_exchange")
-        for order in self._in_flight_orders.values():
-            await order.get_exchange_order_id()
-        track_order = [o for o in self._in_flight_orders.values() if trade_msg["orderId"] == o.exchange_order_id]
+        print(f"\n inside process trade_message in btse_exchange: {trade_msg['orderID']}")
+        # for order in self._in_flight_orders.values():
+        #   await order.get_exchange_order_id()
+        orderID = trade_msg['orderID']
+        track_order = [o for o in self._in_flight_orders.values() if trade_msg["orderID"] == o.exchange_order_id]
+        print(f'\n>>>>> process_trade_msg - track_order: {track_order}')
         if not track_order:
             return
         tracked_order = track_order[0]
+        feeCurrency = 'BTC'  # temporary place holder
+        feeAmount = 0.1  # temp place holder
+        trade_history = await self._api_request(method="get",
+                                                path="user/trade_history",
+                                                params={"orderID": orderID},  # "startTime": int(self._last_poll_timestamp)},
+                                                is_auth_required=True)
+        print(f"\n\n _process_trade_message: trade_history : {trade_history}\n\n")
+        if len(trade_history) > 0:
+            trade_hist = trade_history[0]
+            feeCurrency = trade_hist['feeCurrency']
+            feeAmount = trade_hist['feeAmount']
+            print(f'\n\n TRADE_HISTORY feeCurrency {feeCurrency}, feeAmount {feeAmount}\n')
+        # append feeCurrency, feeAmount to tracked_order
+        tracked_order.fee_asset = feeCurrency
+        tracked_order.fee_amount = feeAmount
+
+        trade_msg["feeCurrency"] = feeCurrency
+        trade_msg["feeAmount"] = feeAmount
+
         updated = tracked_order.update_with_trade_update(trade_msg)
+        print(f'\n>>>> updated : {updated}')
         if not updated:
             return
+        print("\n trigger event\n")
+        # trigger orderfilled
+        trade_fee = estimate_fee("btse", OrderType.LIMIT_MAKER)
+        print(f'getting trade fee {trade_fee} \n')
         self.trigger_event(
             MarketEvent.OrderFilled,
             OrderFilledEvent(
@@ -847,13 +954,20 @@ class BtseExchange(ExchangeBase):
                 tracked_order.order_type,
                 Decimal(str(trade_msg["price"])),
                 Decimal(str(trade_msg["size"])),
-                TradeFee(0.0, [(trade_msg["feeCurrency"], Decimal(str(trade_msg["feeAmount"])))]),
-                exchange_trade_id=trade_msg["orderID"]
+                trade_fee,
+                # fix this line below 2/26/21
+                # TradeFee(0.0, [(trade_msg["feeCurrency"], Decimal(str(trade_msg["feeAmount"])))]),
+                exchange_trade_id=trade_msg["orderID"]  # 2/18/21 - check this
             )
         )
+        print("\n MarketEvent.OrderFilled Trigger event\n")
+        print(f'\n >>> tracked_order.executed_amt base : {tracked_order.executed_amount_base}, amt: {tracked_order.amount}\n')
+        print(f'\n tracked_order.fee_amount: {tracked_order.fee_amount} fee_currency: {tracked_order.fee_asset}\n')
+
         if math.isclose(tracked_order.executed_amount_base, tracked_order.amount) or \
                 tracked_order.executed_amount_base >= tracked_order.amount:
             tracked_order.last_state = "ORDER_FULLY_TRANSACTED"  # ORDER_PARTIALLY_TRANSACTED?
+            print('\n ******   inside process_trade_message: ORDER FULLY TRANSACTED ')
             self.logger().info(f"The {tracked_order.trade_type.name} order "
                                f"{tracked_order.client_order_id} has completed "
                                f"according to order status API.")
@@ -861,17 +975,23 @@ class BtseExchange(ExchangeBase):
                 else MarketEvent.SellOrderCompleted
             event_class = BuyOrderCompletedEvent if tracked_order.trade_type is TradeType.BUY \
                 else SellOrderCompletedEvent
+
+            base_asset = btse_utils.get_base(tracked_order.trading_pair)
+            quote_asset = btse_utils.get_quote(tracked_order.trading_pair)
             self.trigger_event(event_tag,
                                event_class(self.current_timestamp,
                                            tracked_order.client_order_id,
-                                           tracked_order.base_asset,
-                                           tracked_order.quote_asset,
+                                           base_asset,  # tracked_order.base_asset,
+                                           quote_asset,  # tracked_order.quote_asset,
                                            tracked_order.fee_asset,
+                                           # trade_msg['size'],
                                            tracked_order.executed_amount_base,
-                                           tracked_order.executed_amount_quote,
-                                           tracked_order.fee_paid,
+                                           Decimal(trade_msg['price'] * trade_msg['size']),  # TODO: fix fee mismatch
+                                           # tracked_order.executed_amount_quote,
+                                           tracked_order.fee_amount,
                                            tracked_order.order_type))
             self.stop_tracking_order(tracked_order.client_order_id)
+            print(f'\n trigger event order completed event, and stop tracking order: {tracked_order}')
 
     # cross check all orders cancelled.
     async def cancel_all(self, timeout_seconds: float):
@@ -881,7 +1001,7 @@ class BtseExchange(ExchangeBase):
         :param timeout_seconds: The timeout at which the operation will be canceled.
         :returns List of CancellationResult which indicates whether each order is successfully cancelled.
         """
-        print("inside cancel_all in btse_exchange")
+        print("\n ********* inside cancel_all in btse_exchange *********")
         incomplete_orders = [o for o in self._in_flight_orders.values() if not o.is_done]
         tasks = [self._execute_cancel(o.trading_pair, o.client_order_id, True) for o in incomplete_orders]
         order_id_set = set([o.client_order_id for o in incomplete_orders])
@@ -893,6 +1013,9 @@ class BtseExchange(ExchangeBase):
                     if result is not None and not isinstance(result, Exception):
                         order_id_set.remove(result)
                         successful_cancellations.append(CancellationResult(result, True))
+                        # self.trigger_event(MarketEvent.OrderCancelled,
+                        #                   OrderCancelledEvent(self.current_timestamp,
+                        #                                       order_id=result.order_id))
         except Exception:
             self.logger().error("Cancel all failed.", exc_info=True)
             self.logger().network(
@@ -902,6 +1025,8 @@ class BtseExchange(ExchangeBase):
             )
 
         failed_cancellations = [CancellationResult(oid, False) for oid in order_id_set]
+        print(f'\n\nSuccessful Cancellations : {successful_cancellations}')
+        print(f'\nFailed Cancellations: {failed_cancellations}\n')
         return successful_cancellations + failed_cancellations
 
     def tick(self, timestamp: float):
@@ -909,8 +1034,7 @@ class BtseExchange(ExchangeBase):
         Is called automatically by the clock for each clock's tick (1 second by default).
         It checks if status polling task is due for execution.
         """
-        print("user stream tracker last recv time")
-        print(self._user_stream_tracker.last_recv_time)
+        print(f"user stream tracker last recv time: {self._user_stream_tracker.last_recv_time}")
         now = time.time()
         poll_interval = (self.SHORT_POLL_INTERVAL
                          if now - self._user_stream_tracker.last_recv_time > 60.0
@@ -921,8 +1045,11 @@ class BtseExchange(ExchangeBase):
             if not self._poll_notifier.is_set():
                 self._poll_notifier.set()
         self._last_timestamp = timestamp
+        print(f'\n Tick : _last_timestamp: {self._last_timestamp},' +
+              f'current_tick: {current_tick}, last_tick: {last_tick}\n')
+        print(f'now {now}, poll_interval: {poll_interval}\n\n')
 
-    #  - check
+    #  - todo - cross check
     def get_fee(self,
                 base_currency: str,
                 quote_currency: str,
@@ -932,7 +1059,7 @@ class BtseExchange(ExchangeBase):
                 price: Decimal = s_decimal_NaN) -> TradeFee:
         """
         To get trading fee, this function is simplified by using fee override configuration. Most parameters to this
-        function are ignore except order_type. Use OrderType.LIMIT_MAKER to specify you want trading fee for
+        function are ignored except order_type. Use OrderType.LIMIT_MAKER to specify you want trading fee for
         maker order.
         """
         is_maker = order_type is OrderType.LIMIT_MAKER
@@ -960,13 +1087,19 @@ class BtseExchange(ExchangeBase):
         """
         async for event_message in self._iter_user_event_queue():
             try:
-                print("inside _USER_STREAM_EVENT_LISTENER in btse_exchange: event_message")
-                print(event_message)
-                if "notificationApi" not in event_message["topic"]:
-                    continue
-                for trade_msg in event_message["data"]:
-                    await self._process_order_message(trade_msg)  # websocket ongoing order messages
+                # if "notificationApi" not in event_message["topic"]:
+                #    continue
+                trade_msg = event_message["data"]
+                print(f"\n\n *** inside _USER_STREAM_EVENT_LISTENER in btse_exchange: {type(trade_msg)} \n")
 
+                if type(trade_msg) == list:  # handle a list of dicts
+                    for trade_msg in event_message["data"]:
+                        print(f'\n TRADE MESSAGE: {trade_msg}\n')
+                        # await self._process_trade_message(trade_msg)
+                        await self._process_order_message(trade_msg)  # websocket ongoing order messages
+                elif type(trade_msg) == dict:  # handle a single dict
+                    # await self._process_trade_message(trade_msg)
+                    await self._process_order_message(trade_msg)  # websocket ongoing order messages
             except asyncio.CancelledError:
                 raise
             except Exception:

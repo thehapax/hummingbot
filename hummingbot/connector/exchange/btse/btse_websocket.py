@@ -12,7 +12,7 @@ from typing import Optional, AsyncIterable, Any, List
 from websockets.exceptions import ConnectionClosed
 from hummingbot.logger import HummingbotLogger
 from hummingbot.connector.exchange.btse.btse_auth import BtseAuth
-from hummingbot.connector.exchange.btse.btse_utils import RequestId, get_auth_responses
+from hummingbot.connector.exchange.btse.btse_utils import RequestId
 from hummingbot.connector.exchange.btse.btse_periodic_checker import BtsePeriodicChecker
 
 
@@ -67,8 +67,7 @@ class BtseWebsocket(RequestId):
                         payload = {"op": "ping"}
                         print("==== BTSE Keep Alive HEART BEAT === sending a ping: " + str(payload))
                         safe_ensure_future(self._client.send(ujson.dumps(payload)))
-                    d_raw_msg = get_auth_responses(raw_msg_str)
-                    yield d_raw_msg
+                    yield raw_msg_str
                 except asyncio.TimeoutError:
                     await asyncio.wait_for(self._client.ping(), timeout=self.PING_TIMEOUT)
         except asyncio.TimeoutError:
@@ -96,7 +95,7 @@ class BtseWebsocket(RequestId):
             payload['args'] = auth['args']
 
         await self._client.send(ujson.dumps(payload))
-        print(str(payload))
+        print(f'btse_websocket _emit: {str(payload)}')
 #        print(f'request id: {id}')
         return id
 

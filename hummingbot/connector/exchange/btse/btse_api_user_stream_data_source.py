@@ -8,6 +8,7 @@ from hummingbot.core.data_type.user_stream_tracker_data_source import UserStream
 from hummingbot.logger import HummingbotLogger
 from .btse_auth import BtseAuth
 from .btse_websocket import BtseWebsocket
+import json
 
 
 class BtseAPIUserStreamDataSource(UserStreamTrackerDataSource):
@@ -42,21 +43,27 @@ class BtseAPIUserStreamDataSource(UserStreamTrackerDataSource):
             ws = BtseWebsocket(self._btse_auth)
             await ws.connect()
             await ws.subscribe(["notificationApiV1"])
-            print("Websocket subscribe to notifications api, \n in _listen_to_orders_trades_balances in api_user_stream_data \n")
+            print("\n Websocket subscribe to notifications api, " +
+                  "\n in _listen_to_orders_trades_balances in api_user_stream_data \n")
+
             if self.last_recv_time == 0:
                 self._last_recv_time = time.time()
                 print(f"setting initial time: {self._last_recv_time}")
                 # initial time is zero, set to non-zero
 
             async for msg in ws.on_message():
-                print(f'Data returned websocket message: {msg}')
-                if 'notificationsApiV1' not in msg:
+                m = json.loads(msg)
+                print(f'\n >>>>>>> Data returned websocket message type: \n {type(msg)}\n json-loads m: {type(m)}')
+                if m.get('topic') != 'notificationApiV1':
                     continue
-                # print("API USER STREAM: inside _listen_to_orders_trades_balances in api_user_stream_data_source")
+                print("API USER STREAM: inside _listen_to_orders_trades_balances in api_user_stream_data_source")
                 print(f"WS_SOCKET: {msg}")
-                yield msg
+                yield m
                 self._last_recv_time = time.time()
+                print(f'setting _last_recv_time {self._last_recv_time}')
+
         except Exception as e:
+            print(f'Exception in _listen_to_orders_trades_balances: {e}')
             raise e
         finally:
             await ws.disconnect()

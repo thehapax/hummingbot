@@ -39,9 +39,13 @@ class BtseInFlightOrder(InFlightOrderBase):
     # other "status":
     # websocket: ORDER_INSERTED, TRIGGER_ACTIVATED, TRIGGER_INSERTED
     # Rest API "orderState": STATUS_ACTIVE
+    # "ORDER_PARTIALLY_TRANSACTED"
+
+    # >>>>>TODO:  "ORDER_FULLY_TRANSACTED" becomes 'STATUS_INACTIVE' after 30 min?
+    # pls check this (completed order, normally on open orders)
     @property
     def is_done(self) -> bool:
-        return self.last_state in {"ORDER_FULLY_TRANSACTED", "ORDER_PARTIALLY_TRANSACTED"}
+        return self.last_state in {"ORDER_FULLY_TRANSACTED"}
 
     @property
     def is_failure(self) -> bool:
@@ -88,16 +92,29 @@ class BtseInFlightOrder(InFlightOrderBase):
         Updates the in flight order with trade update (from private/get-order-detail end point)
         return: True if the order gets updated otherwise False
         """
-        trade_id = trade_update["tradeId"]
-#       trade_update["orderId"] is type int
-        if str(trade_update["orderId"]) != self.exchange_order_id or trade_id in self.trade_id_set:
-            # trade already recorded
+        # trade_id = trade_update["orderID"]
+        trade_id = str(trade_update["orderID"])
+        print(f'\n\n >> update_with_trade_update: orderid: {trade_id}, self.exchange_order_id :{self.exchange_order_id}\n')
+        print(f'\n trade_update: \t {trade_update} \n')
+        print(f'\ntrade_id_set {self.trade_id_set}\n')
+        print(f' fee amount in trade_update: {trade_update["feeAmount"]}')
+
+        # TODO:  get trade_history in order to get feeAmount and feeCurrency
+        # or trade_id in self.trade_id_set: # trade already recorded
+
+        # params = {'orderID': trade_id}
+        if trade_id != self.exchange_order_id:
             return False
-        self.trade_id_set.add(trade_id)
+
+        # TODO: fix these variables 2/25/21
+        self.trade_id_set.add(str(trade_id))
         self.executed_amount_base += Decimal(str(trade_update["filledSize"]))
         self.fee_paid += Decimal(str(trade_update["feeAmount"]))
-        self.executed_amount_quote += (Decimal(str(trade_update["filledPrice"])) *
-                                       Decimal(str(trade_update["filledSize"])))
+
+        self.executed_amount_quote += Decimal(str(trade_update['orderValue']))
+        # self.executed_amount_quote += (Decimal(str(trade_update["averageFillPrice"])) *
+        #                               Decimal(str(trade_update["filledSize"])))
+
         if not self.fee_asset:
             self.fee_asset = trade_update["feeCurrency"]
         return True

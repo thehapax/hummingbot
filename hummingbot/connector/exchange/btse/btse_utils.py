@@ -4,6 +4,105 @@ from typing import Dict, List
 from hummingbot.core.utils.tracking_nonce import get_tracking_nonce, get_tracking_nonce_low_res
 import hummingbot.connector.exchange.btse.btse_constants as Constants
 import ujson
+import locale
+from decimal import Decimal
+
+
+# round down to the nearest multiple of a
+def round_down(x, a):
+    return math.floor(x / a) * a
+
+
+# round up - to use with minimum order size
+def round_up(x, a):
+    return math.ceil(x / a) * a
+
+
+# round to the nearest multiple of a
+def round_nearest(x, a):
+    return round(x / a) * a
+
+
+# adjust price for order based on btse size/price increment restrictions.
+def adjust_increment(price, minpriceinc):
+    try:
+        price = Decimal(price)
+        print(f'>> adjust_increment, input price: {price}, minpriceinc: {minpriceinc}\n')
+        print(f'Type of minpriceinc {type(minpriceinc)}, price: {type(price)}\n')
+
+        if 'e' in str(minpriceinc):
+            p = Decimal(locale.format_string("%f", minpriceinc))
+        else:
+            p = Decimal(str(minpriceinc))
+
+        min_price_decimals = len(str(p).split(".")[1])
+        minpriceinc = Decimal(minpriceinc)
+
+        print(f'Inside Adjust_increment: min price inc: {minpriceinc},' +
+              f' number of decimals allowed: {min_price_decimals}\n\n')
+
+        deci = price - math.floor(price)
+        if deci == 0:
+            adjusted_price = price
+            print(f'\n Deci - adjusted price is price: {price}')
+            return adjusted_price
+
+        remainder = deci % minpriceinc
+        if remainder == 0.0:  # we are at no remainder so obeys step.
+            adjusted_price = price
+            print(f'remainder - adjusted price is price: {price}')
+        else:
+            near_price = round_nearest(price, minpriceinc)
+            adjusted_price = round(near_price, min_price_decimals)
+            print(f'round_nearest price: {near_price}, adj_price: {adjusted_price}')
+
+        return adjusted_price
+    except Exception as e:
+        print(f'Exception thrown in adjust_increment: {e}')
+        return e
+
+
+# Calculate size for order within btse exchange bounds
+def bounded_size(size, minsize, maxsize, minsizeinc):
+    try:
+        adjusted_size = size
+        min_sizeinc = minsizeinc
+        min_size = minsize
+
+        print(f">> \nBounded_size - input size (float): {adjusted_size}," +
+              f"Minsize {minsize}," +
+              f"Maxsize {maxsize}, minsizeinc {minsizeinc}\n")
+
+        if 'e' in str(minsizeinc):
+            min_sizeinc = Decimal(locale.format_string("%f", minsizeinc))
+        if 'e' in str(minsize):
+            min_size = Decimal(locale.format_string("%f", minsize))
+
+        minsizeinc_decimals = len(str(min_sizeinc).split(".")[1])
+        print(f'\n minsize_inc decimals: {minsizeinc_decimals}')
+        print(f'\n min_sizeinc: {min_sizeinc}, min_size: {min_size}\n')
+
+        if size < maxsize and size > min_size:
+            print("adjusted size within bounds, ok")
+            adjusted_size = size
+        elif size <= min_size:
+            print("make minsize adjusted size")
+            adjusted_size = min_size
+        elif size >= maxsize:
+            print("make adjusted_size maxsize")
+            adjusted_size = maxsize
+        print(f'\n>> post switch adjusted_size: {adjusted_size}')
+        # min size decimals
+
+        bounded_size = round_up(Decimal(adjusted_size), Decimal(min_sizeinc))
+        print(f'>> Bounded Adjusted Size: {bounded_size}, minsize: {min_sizeinc}')
+        bounded_size = round(bounded_size, minsizeinc_decimals)
+        print(f'\n bounded size rounded off : {bounded_size}')
+
+        return bounded_size
+    except Exception as e:
+        print(f'Exception in bounded_size: {e}')
+        return e
 
 
 def get_status_msg(code):
@@ -36,21 +135,6 @@ def reshape(orderbook_data):
         asks.append(list(i.values()))
     newob = {'bids': bids, 'asks': asks, 't': t}
     return newob
-
-
-def get_auth_responses(response):
-    lookup = {'UNLOGIN_USER connect success': 'Auth_Connect_No_Login',
-              'connect success': 'Auth_Connected_Token',
-              'is authenticated successfully': 'Auth_Success',
-              'AUTHENTICATE ERROR': 'Auth_Failed'}
-
-    if "topic" in str(response):
-        return ujson.loads(response)
-
-    for k, v in lookup.items():
-        if k in response:
-            rdict = {"topic": str(v), "message": str(response)}
-            return rdict
 
 
 def is_json(myjson):

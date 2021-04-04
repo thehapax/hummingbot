@@ -2,13 +2,13 @@ from decimal import Decimal
 
 EXCHANGE_NAME = "btse"
 
-# Production
+# Production links as of Jan 19, 2021 API update
 # BTSE_Endpoint = 'https://api.btse.com/spot/api/v3.2'
 # BTSE_WSEndpoint = 'wss://ws.btse.com'
-# WSS_PRIVATE_URL = 'wss://ws.btse.com/spotWS'
-# WSS_PUBLIC_URL = 'wss://ws.btse.com/spotWS'
+# WSS_PRIVATE_URL = 'wss://ws.btse.com/ws/spot'
+# WSS_PUBLIC_URL = 'wss://ws.btse.com/ws/spot'
 
-# Testnet
+# Testnet as of Feb 5, 2021
 BTSE_Endpoint = 'https://testapi.btse.io/spot/api/v3.2/'
 BTSE_WSEndpoint = 'wss://testws.btse.io'
 WSS_PRIVATE_URL = 'wss://testws.btse.io/spotWS'

@@ -14,6 +14,7 @@ from hummingbot.core.data_type.order_book_message import (
     OrderBookMessage, OrderBookMessageType
 )
 from hummingbot.connector.exchange.btse.btse_order_book_message import BtseOrderBookMessage
+import pandas as pd
 
 _btob_logger = None
 
@@ -75,11 +76,13 @@ class BtseOrderBook(OrderBook):
 
         if metadata:
             msg.update(metadata)
+        if "time" in msg:
+            msg_time = pd.Timestamp(msg["time"]).timestamp()
 
         return BtseOrderBookMessage(
             message_type=OrderBookMessageType.DIFF,
             content=msg,
-            timestamp=timestamp
+            timestamp=timestamp or msg_time
         )
 
     @classmethod

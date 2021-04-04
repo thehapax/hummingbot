@@ -18,6 +18,8 @@ from .btse_order_book import BtseOrderBook
 from .btse_websocket import BtseWebsocket
 from .btse_utils import ms_timestamp_to_s
 
+import ujson
+
 
 class BtseAPIOrderBookDataSource(OrderBookTrackerDataSource):
     MAX_RETRIES = 20
@@ -112,15 +114,17 @@ class BtseAPIOrderBookDataSource(OrderBookTrackerDataSource):
                     self._trading_pairs
                 )))
                 async for response in ws.on_message():
-                    print("\n API: tradeHistory -listen_for_trades in btse_api_ob_data_source: ")
-                    # print(str(response))
-                    if response.get("data") is None:
+                    # print("\n API: tradeHistory -listen_for_trades in btse_api_ob_data_source: ")
+                    # print(f'>>>>> LISTEN FOR TRADES response: {str(response)}')
+                    res = ujson.loads(str(response))
+                    if res.get("data") is None:
                         continue
 
-                    for trade in response["data"]:
+                    for trade in res["data"]:
                         trade: Dict[Any] = trade
-                        # print(trade) # this works
-                        # ---> todo : Reshape the trade object into correct format.
+                        print(f'\n LISTEN FOR TRADE DATA : {trade}\n')
+                        # this works
+                        # ---> TODO : Reshape the trade object into correct format.
                         # trade_timestamp: int = ms_timestamp_to_s(time.time())
                         trade_timestamp: int = ms_timestamp_to_s(trade["timestamp"])
                         trade_msg: OrderBookMessage = BtseOrderBook.trade_message_from_exchange(
@@ -152,17 +156,16 @@ class BtseAPIOrderBookDataSource(OrderBookTrackerDataSource):
                 )))
                 # print("\n ***** API: INSIDE listen_for_order_book_diffs in btse_api_ob_datasource\n")
                 async for response in ws.on_message():
+                    response = ujson.loads(str(response))
                     if response.get('data') is None:
                         continue
 
                     print("\n API: Data Response from listen_for_order_book_diffs is not None ")
-                    # print(str(response['data']))
                     order_book_data = btse_utils.reshape(response['data'])
                     # print(str(order_book_data))
                     # order_book_data = response['data']
                     # print("API - OB Diffs timestamp")
                     # print(response['data']['timestamp'])
-                    # print("\n\n")
                     timestamp: int = ms_timestamp_to_s(response['data']['timestamp'])
                     # data in this channel is not order book diff but the entire order book (up to depth 150).
                     # so we need to convert it into a order book snapshot.

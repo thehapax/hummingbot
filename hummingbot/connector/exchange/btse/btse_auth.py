@@ -51,14 +51,14 @@ class BtseAuth:
         :param data: request payload
         :return: a dictionary of auth headers
         """
-        print("******* INSIDE GET HEADERS *******")
+        # print("******* INSIDE GET HEADERS *******")
         # print(f'\n SECRET KEY : {self.secret_key}, API-KEY : {self.api_key} ')
         # api_secret: bytes = bytes(self.secret_key, 'latin-1')
         # api_key: bytes = bytes(self.api_key, 'latin-1')
 
         nonce = get_tracking_nonce()
         # nonce = str(int(time.time()*1000))
-        print(f'\nget_tracking_nonce: {nonce}')
+        # print(f'\nget_tracking_nonce: {nonce}')
 
         message = path_url + nonce + data
         print(f'MESSAGE: {message}')
@@ -77,6 +77,7 @@ class BtseAuth:
             'Accept': 'application/json;charset=UTF-8',
             'Content-Type': 'application/json',
         }
+        # print(f'headers: {headers}')
         return headers
 
     def make_headers(self, path: str, data: str = "") -> Dict[str, any]:
