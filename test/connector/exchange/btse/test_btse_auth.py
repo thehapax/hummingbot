@@ -1,11 +1,11 @@
 import asyncio
 import unittest
-from typing import List
 
 import conf
 from hummingbot.connector.exchange.btse.btse_auth import BtseAuth
 from hummingbot.connector.exchange.btse.btse_websocket import BtseWebsocket
 import requests
+import ujson
 
 
 class TestAuth(unittest.TestCase):
@@ -28,19 +28,20 @@ class TestAuth(unittest.TestCase):
         await self.ws.subscribe(["orderBookApi:BTC-USD_5"])
 
         async for response in self.ws.on_message():
-            print(type(response))
-            if (response.get("topic") == 'Auth_Success'):
-                return response
+            res = ujson.loads(response)
+            print(f'response type in websocket message: {type(res)}, response: {res}')
+            if (res.get("event") == 'login'):
+                return res.get('success')
 
     def test_auth(self):
         print("inside test_auth")
-        result: List[str] = self.ev_loop.run_until_complete(self.con_auth())
-        assert "authenticated successfully" in result["message"]
+        result: bool = self.ev_loop.run_until_complete(self.con_auth())
+        assert result
 
     def test_headers(self):
-        # params = {'currency': 'BTC'}
+        params = {'currency': 'BTC'}
         btse_test_url = 'https://testapi.btse.io/spot/api/v3.2/user/wallet'
-        params = {}
+        # params = {}
         r = requests.get(
             btse_test_url,
             params=params,

@@ -371,9 +371,8 @@ cdef class ConnectorBase(NetworkIterator):
         if price.is_nan():
             return price
         price_quantum = self.c_get_order_price_quantum(trading_pair, price)
-        print(f'price_quantum : {price_quantum}')
+        # c_method not implemented.
         final_value = round(price / price_quantum) * price_quantum
-        print(f'final value: {final_value}')
         return final_value
 
     def quantize_order_price(self, trading_pair: str, price: Decimal) -> Decimal:
@@ -383,11 +382,9 @@ cdef class ConnectorBase(NetworkIterator):
         return self.c_quantize_order_price(trading_pair, price)
 
     cdef object c_quantize_order_amount(self, str trading_pair, object amount, object price=s_decimal_NaN):
+        print(f'inside c_quantize_order_amount: {amount}')
         order_size_quantum = self.c_get_order_size_quantum(trading_pair, amount)
-        print(f'order_size_quantum : {order_size_quantum}')
-        # integer division is not going to work for btc?!
         final_amount = (amount // order_size_quantum) * order_size_quantum
-        print(f'final amount: {final_amount}')
         return final_amount
 
     def quantize_order_amount(self, trading_pair: str, amount: Decimal) -> Decimal:

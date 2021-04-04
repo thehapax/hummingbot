@@ -39,7 +39,7 @@ class BtseUserStreamTrackerUnitTest(unittest.TestCase):
         self.ev_loop.run_until_complete(asyncio.sleep(10.0))
 
         limit_order_form = {
-            "price": 7050,
+            "price": 37050,
             "side": "BUY",
             "size": 0.002,
             "symbol": "BTC-USDT",
