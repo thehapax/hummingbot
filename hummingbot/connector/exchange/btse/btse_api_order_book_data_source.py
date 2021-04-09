@@ -56,13 +56,12 @@ class BtseAPIOrderBookDataSource(OrderBookTrackerDataSource):
                 price = float(resp_json[0]["lastPrice"])
             return price
 
-    # test this method first
     @staticmethod
     async def get_order_book_data(trading_pair: str) -> Dict[str, any]:
         """
         Get whole orderbook
         """
-        print("API : inside get_order_book_data in btse_api_order_book_data_source")
+        print(f"API : [{trading_pair}] inside get_order_book_data in btse_api_order_book_data_source")
         params = {'symbol': trading_pair}
 
         async with aiohttp.ClientSession() as client:
@@ -76,15 +75,12 @@ class BtseAPIOrderBookDataSource(OrderBookTrackerDataSource):
                     f"HTTP status is {orderbook_response.status}."
                 )
             orderbook_data: Dict[str, Any] = await safe_gather(orderbook_response.json())
-            # print("!!!!!!!!!!!!! ORDERBOOK DATA !!!!!!!!!!!!!")
-            # print(orderbook_data)
             data: Dict[str, Any] = btse_utils.reshape(orderbook_data[0])
         return data
 
     async def get_new_order_book(self, trading_pair: str) -> OrderBook:
-        # print("\nAPI: >>>> GET NEW ORDER BOOK  - inside get_new_order_book in btse_api_order_book_data_source\n")
+        # print("\nAPI: >>>> GET NEW ORDER BOOK  - inside get_new_order_book in btse_api_order_book_data_source")
         snapshot: Dict[str, Any] = await self.get_order_book_data(trading_pair)
-        # print(snapshot)
         # snapshot_timestamp: int = ms_timestamp_to_s(snapshot["timestamp"])
         snapshot_timestamp: float = time.time()  # why would be using local time instead of snapshot time?
         snapshot_msg: OrderBookMessage = BtseOrderBook.snapshot_message_from_exchange(
@@ -93,9 +89,7 @@ class BtseAPIOrderBookDataSource(OrderBookTrackerDataSource):
             metadata={"trading_pair": trading_pair}
         )
         order_book = self.order_book_create_function()
-        # print("API: Created orderbook function() ")
         active_order_tracker: BtseActiveOrderTracker = BtseActiveOrderTracker()
-        # print(" >>>>>> API: Created Active Order Tracker")
         bids, asks = active_order_tracker.convert_snapshot_message_to_order_book_row(snapshot_msg)
         order_book.apply_snapshot(bids, asks, snapshot_msg.update_id)
         return order_book
@@ -106,7 +100,6 @@ class BtseAPIOrderBookDataSource(OrderBookTrackerDataSource):
         """
         while True:
             try:
-                # print(" API: inside listen_for_trades in btse_api_ob_datasource")
                 ws = BtseWebsocket(auth=None)
                 await ws.connect()
                 await ws.subscribe(list(map(
@@ -114,7 +107,6 @@ class BtseAPIOrderBookDataSource(OrderBookTrackerDataSource):
                     self._trading_pairs
                 )))
                 async for response in ws.on_message():
-                    # print("\n API: tradeHistory -listen_for_trades in btse_api_ob_data_source: ")
                     # print(f'>>>>> LISTEN FOR TRADES response: {str(response)}')
                     res = ujson.loads(str(response))
                     if res.get("data") is None:
@@ -122,10 +114,8 @@ class BtseAPIOrderBookDataSource(OrderBookTrackerDataSource):
 
                     for trade in res["data"]:
                         trade: Dict[Any] = trade
-                        print(f'\n LISTEN FOR TRADE DATA : {trade}\n')
-                        # this works
+                        print(f'\n LISTEN FOR TRADE DATA : {trade}')
                         # ---> TODO : Reshape the trade object into correct format.
-                        # trade_timestamp: int = ms_timestamp_to_s(time.time())
                         trade_timestamp: int = ms_timestamp_to_s(trade["timestamp"])
                         trade_msg: OrderBookMessage = BtseOrderBook.trade_message_from_exchange(
                             trade,
@@ -154,27 +144,28 @@ class BtseAPIOrderBookDataSource(OrderBookTrackerDataSource):
                     lambda pair: f"orderBookL2Api:{pair}_150",
                     self._trading_pairs
                 )))
-                # print("\n ***** API: INSIDE listen_for_order_book_diffs in btse_api_ob_datasource\n")
                 async for response in ws.on_message():
                     response = ujson.loads(str(response))
                     if response.get('data') is None:
                         continue
 
-                    print("\n API: Data Response from listen_for_order_book_diffs is not None ")
+                    # print("\n API: Data Response from listen_for_order_book_diffs is not None ")
                     order_book_data = btse_utils.reshape(response['data'])
-                    # print(str(order_book_data))
                     # order_book_data = response['data']
-                    # print("API - OB Diffs timestamp")
-                    # print(response['data']['timestamp'])
                     timestamp: int = ms_timestamp_to_s(response['data']['timestamp'])
+                    # print(f"API - OB Diffs timestamp {timestamp} \n\n")
                     # data in this channel is not order book diff but the entire order book (up to depth 150).
                     # so we need to convert it into a order book snapshot.
                     # Btse does not offer order book diff ws updates.
-                    orderbook_msg: OrderBookMessage = BtseOrderBook.snapshot_message_from_exchange(
+                    orderbook_msg: OrderBookMessage = BtseOrderBook.diff_message_from_exchange(
                         order_book_data,
-                        timestamp,
-                        metadata={"trading_pair": btse_utils.get_symbol_from_topic(response["topic"])}
+                        timestamp, metadata={"trading_pair": btse_utils.get_symbol_from_topic(response["topic"])}
                     )
+                    # orderbook_msg: OrderBookMessage = BtseOrderBook.snapshot_message_from_exchange(
+                    #    order_book_data,
+                    #    timestamp,
+                    #    metadata={"trading_pair": btse_utils.get_symbol_from_topic(response["topic"])}
+                    # )
                     output.put_nowait(orderbook_msg)
             except asyncio.CancelledError:
                 raise
@@ -194,7 +185,6 @@ class BtseAPIOrderBookDataSource(OrderBookTrackerDataSource):
         """
         Listen for orderbook snapshots by fetching orderbook
         """
-        # print(" API: inside listen_for_order_book_snapshots in btse_api_ob_datasource")
         while True:
             try:
                 for trading_pair in self._trading_pairs:
@@ -231,25 +221,3 @@ class BtseAPIOrderBookDataSource(OrderBookTrackerDataSource):
             except Exception:
                 self.logger().error("Unexpected error.", exc_info=True)
                 await asyncio.sleep(5.0)
-
-
-'''
-    @staticmethod
-    async def get_snapshot(client: aiohttp.ClientSession, trading_pair: str) -> Dict[str, any]:
-        """
-        Fetches order book snapshot for a particular trading pair from the rest API
-        :returns: Response from the rest API
-        """
-        print("==== API: inside get_SNAPSHOT: btse-api-order-book-data-source")
-        params = {'symbol': trading_pair}
-        product_order_book_url: str = f'{constants.REST_URL}/orderbook/L2'
-        async with client.get(product_order_book_url, params=params) as response:
-            response: aiohttp.ClientResponse = response
-            if response.status != 200:
-                raise IOError(f"Error fetching Btse.com market snapshot for {trading_pair}. "
-                              f"HTTP status is {response.status}.")
-            data: Dict[str, Any] = await response.json()
-            print(">>>>>>> API: SNAPSHOT data:")
-            print(data)
-            return data
-'''
