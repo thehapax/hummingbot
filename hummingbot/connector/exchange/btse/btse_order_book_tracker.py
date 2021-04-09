@@ -7,14 +7,13 @@ import time
 
 from collections import defaultdict, deque
 from typing import Optional, Dict, List, Deque
-from hummingbot.core.data_type.order_book_message import OrderBookMessageType
+from hummingbot.core.data_type.order_book_message import OrderBookMessageType  # OrderBookMessage
 from hummingbot.logger import HummingbotLogger
 from hummingbot.core.data_type.order_book_tracker import OrderBookTracker
 from hummingbot.connector.exchange.btse.btse_order_book_message import BtseOrderBookMessage
 from hummingbot.connector.exchange.btse.btse_active_order_tracker import BtseActiveOrderTracker
 from hummingbot.connector.exchange.btse.btse_api_order_book_data_source import BtseAPIOrderBookDataSource
 from hummingbot.connector.exchange.btse.btse_order_book import BtseOrderBook
-
 from hummingbot.core.data_type.order_book_tracker_data_source import OrderBookTrackerDataSource
 
 
@@ -54,8 +53,6 @@ class BtseOrderBookTracker(OrderBookTracker):
         """
         Update an order book with changes from the latest batch of received messages
         """
-        # print(f"\n==== OB: inside _TRACK_SINGLE_BOOK: {trading_pair} -- in btse_order_book_tracker ===== \n")
-
         past_diffs_window: Deque[BtseOrderBookMessage] = deque()
         self._past_diffs_windows[trading_pair] = past_diffs_window
 
@@ -75,13 +72,12 @@ class BtseOrderBookTracker(OrderBookTracker):
                     message = saved_messages.popleft()
                 else:
                     message = await message_queue.get()
-                print("====== OB: saved messages TRACK_SINGLE_BOOK in btse_order_book_tracker\n")
-                print(saved_messages)
 
-                # print(message.type)
                 if message.type is OrderBookMessageType.DIFF:
                     print(">>>>>> OB: DIFF - TRACK inside message.type is OrderBookMessageType.DIFF  <<<<<<<")
-                    bids, asks = active_order_tracker.convert_diff_message_to_order_book_row(message)
+                    # TODO check why active order is not tracked even if conversion is correct
+                    bids, asks = active_order_tracker.convert_snapshot_message_to_order_book_row(message)
+                    # bids, asks = active_order_tracker.convert_diff_message_to_order_book_row(message) # incorrect
                     order_book.apply_diffs(bids, asks, message.update_id)
                     past_diffs_window.append(message)
                     while len(past_diffs_window) > self.PAST_DIFF_WINDOW_SIZE:
@@ -91,7 +87,8 @@ class BtseOrderBookTracker(OrderBookTracker):
                     # Output some statistics periodically.
                     now: float = time.time()
                     if int(now / 60.0) > int(last_message_timestamp / 60.0):
-                        # print(f"Processed {diff_messages_accepted} order book diffs for {trading_pair}")
+                        print(f"@@@@ message.update_id: {message.update_id}")
+                        print(f"Processed {diff_messages_accepted} order book diffs for {trading_pair}")
                         self.logger().debug("Processed %d order book diffs for %s.",
                                             diff_messages_accepted, trading_pair)
                         diff_messages_accepted = 0
@@ -99,18 +96,16 @@ class BtseOrderBookTracker(OrderBookTracker):
                 elif message.type is OrderBookMessageType.SNAPSHOT:
                     print(">>>>>> OB: SNAPSHOT- TRACK inside message.type is OrderBookMessage.Type.SNAPSHOT  <<<<<<<")
                     past_diffs: List[BtseOrderBookMessage] = list(past_diffs_window)
-                    # print(" OB: PAST DIFFS: ")
-                    # print(past_diffs)
                     # only replay diffs later than snapshot, first update active order with snapshot then replay diffs
                     replay_position = bisect.bisect_right(past_diffs, message)
                     replay_diffs = past_diffs[replay_position:]
                     s_bids, s_asks = active_order_tracker.convert_snapshot_message_to_order_book_row(message)
-                    # print("OB: s_bids, s_asks")
                     # print(s_bids)
                     # print("OB: message update id: " + str(message.update_id))
                     order_book.apply_snapshot(s_bids, s_asks, message.update_id)
+                    # print('Processed ORDER BOOK SNAPSHOT\n\n')
                     for diff_message in replay_diffs:
-                        # print("inside diff_message in REPLAY_DIFFS ==================>>>>>> ")
+                        # print("inside diff_message in OB SNAPSHOT - REPLAY_DIFFS ==================>>>>>> ")
                         d_bids, d_asks = active_order_tracker.convert_diff_message_to_order_book_row(diff_message)
                         order_book.apply_diffs(d_bids, d_asks, diff_message.update_id)
                     # print(f">>>>>>>> OB: Processed order book snapshot for {trading_pair}")
