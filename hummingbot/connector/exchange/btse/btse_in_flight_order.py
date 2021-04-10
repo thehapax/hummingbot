@@ -41,7 +41,7 @@ class BtseInFlightOrder(InFlightOrderBase):
     # Rest API "orderState": STATUS_ACTIVE
     # "ORDER_PARTIALLY_TRANSACTED"
 
-    # >>>>>TODO:  "ORDER_FULLY_TRANSACTED" becomes 'STATUS_INACTIVE' after 30 min?
+    # >>>>>TODO: CHECK if "ORDER_FULLY_TRANSACTED" becomes 'STATUS_INACTIVE' after 30 min
     # pls check this (completed order, normally on open orders)
     @property
     def is_done(self) -> bool:
@@ -49,7 +49,7 @@ class BtseInFlightOrder(InFlightOrderBase):
 
     @property
     def is_failure(self) -> bool:
-        return self.last_state in {"ORDER_REJECTED", "INSUFFICIENT_BALANCE", "MARKET_UNAVAILABLE"}
+        return self.last_state in {"ORDER_REJECTED", "INSUFFICIENT_BALANCE", "MARKET_UNAVAILABLE", "STATUS_INACTIVE"}
 
     @property
     def is_cancelled(self) -> bool:
