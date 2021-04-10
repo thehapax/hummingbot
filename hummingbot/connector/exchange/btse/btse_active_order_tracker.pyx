@@ -36,11 +36,11 @@ cdef class BtseActiveOrderTracker:
     def active_bids(self) -> BtseOrderBookTrackingDictionary:
         return self._active_bids
 
-    # TODO: research this more
+    # TODO: not currently implemented 4/1/2021
     def volume_for_ask_price(self, price) -> float:
         return NotImplementedError
 
-    # TODO: research this more
+    # TODO: not currently implemented 4/1/2021
     def volume_for_bid_price(self, price) -> float:
         return NotImplementedError
 
