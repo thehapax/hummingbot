@@ -1,4 +1,3 @@
-# copied from crypto_com utils - TODO make sure remove unused methods
 import math
 from typing import Dict, List
 from hummingbot.core.utils.tracking_nonce import get_tracking_nonce, get_tracking_nonce_low_res
@@ -69,30 +68,26 @@ def bounded_size(size, minsize, maxsize, minsizeinc):
         min_sizeinc = minsizeinc
         min_size = minsize
 
-        print(f">> \nBounded_size - input size (float): {adjusted_size}," +
-              f"Minsize {minsize}," +
-              f"Maxsize {maxsize}, minsizeinc {minsizeinc}\n")
-
         if 'e' in str(minsizeinc):
             min_sizeinc = Decimal(locale.format_string("%f", minsizeinc))
         if 'e' in str(minsize):
             min_size = Decimal(locale.format_string("%f", minsize))
 
         minsizeinc_decimals = len(str(min_sizeinc).split(".")[1])
-        print(f'\n minsize_inc decimals: {minsizeinc_decimals}')
-        print(f'\n min_sizeinc: {min_sizeinc}, min_size: {min_size}\n')
+        # print(f'\n minsize_inc decimals: {minsizeinc_decimals}')
+        # print(f'\n min_sizeinc: {min_sizeinc}, min_size: {min_size}\n')
 
         if size < maxsize and size > min_size:
-            print("adjusted size within bounds, ok")
+            # print("adjusted size within bounds, ok")
             adjusted_size = size
         elif size <= min_size:
-            print("make minsize adjusted size")
+            # print("make minsize adjusted size")
             adjusted_size = min_size
         elif size >= maxsize:
-            print("make adjusted_size maxsize")
+            # print("make adjusted_size maxsize")
             adjusted_size = maxsize
-        print(f'\n>> post switch adjusted_size: {adjusted_size}')
-        # min size decimals
+            # print(f'\n>> post switch adjusted_size: {adjusted_size}')
+            # min size decimals
 
         bounded_size = round_up(Decimal(adjusted_size), Decimal(min_sizeinc))
         print(f'>> Bounded Adjusted Size: {bounded_size}, minsize: {min_sizeinc}')
