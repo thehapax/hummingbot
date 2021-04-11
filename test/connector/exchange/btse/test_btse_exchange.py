@@ -40,17 +40,6 @@ from test.integration.humming_ws_server import HummingWsServerFactory
 from test.connector.exchange.btse import fixture
 
 from typing import List
-# from hummingbot.connector.exchange.btse.btse_auth import BtseAuth
-# from typing import (
-#    Dict,
-#    List,
-#    Optional,
-#    Any,
-#    AsyncIterable,
-# )
-# import json
-# import aiohttp
-# from hummingbot.connector.exchange.btse import btse_constants as Constants
 
 
 logging.basicConfig(level=METRICS_LOG_LEVEL)
