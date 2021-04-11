@@ -42,7 +42,7 @@ class BtseWebsocket(RequestId):
             # we need to emit authenticated requests
             if self._isPrivate:
                 await self._emit('authKeyExpires', None)
-                # TODO: wait for response
+                # TODO: BTSE should have a wait for response, but not implemented.
                 await asyncio.sleep(1)
 
             return self._client
