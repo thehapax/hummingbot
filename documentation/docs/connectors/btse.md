@@ -80,4 +80,4 @@ Read through their help articles below for more information.
 
 Unlike other connectors, overriding the fee calculated by Hummingbot on trades by editing `conf_fee_overrides.yml` file will not be accurate but an estimate.
 
-TBD --->> ?? Btse.com connector uses the trade info including the actual amount of fees paid. You can confirm this in the CSV file inside the `data` folder.
+Btse.com connector uses the trade info including the actual amount of fees paid. You can confirm this in the CSV file inside the `data` folder.
