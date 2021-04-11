@@ -127,7 +127,6 @@ class BtseOrderBook(OrderBook):
         if metadata:
             msg.update(metadata)
 
-        # TODO check if valid for btse
         msg.update({
             "exchange_order_id": msg.get("tradeId"),
             "trade_type": msg.get("side"),
