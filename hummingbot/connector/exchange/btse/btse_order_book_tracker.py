@@ -75,9 +75,7 @@ class BtseOrderBookTracker(OrderBookTracker):
 
                 if message.type is OrderBookMessageType.DIFF:
                     print(">>>>>> OB: DIFF - TRACK inside message.type is OrderBookMessageType.DIFF  <<<<<<<")
-                    # TODO check why active order is not tracked even if conversion is correct
                     bids, asks = active_order_tracker.convert_snapshot_message_to_order_book_row(message)
-                    # bids, asks = active_order_tracker.convert_diff_message_to_order_book_row(message) # incorrect
                     order_book.apply_diffs(bids, asks, message.update_id)
                     past_diffs_window.append(message)
                     while len(past_diffs_window) > self.PAST_DIFF_WINDOW_SIZE:
