@@ -35,14 +35,10 @@ class BtseInFlightOrder(InFlightOrderBase):
         self.trade_id_set = set()
         self.cancelled_event = asyncio.Event()
 
-    # method is not used but here if needed in future
-    # other "status":
-    # websocket: ORDER_INSERTED, TRIGGER_ACTIVATED, TRIGGER_INSERTED
-    # Rest API "orderState": STATUS_ACTIVE
-    # "ORDER_PARTIALLY_TRANSACTED"
-
-    # >>>>>TODO: CHECK if "ORDER_FULLY_TRANSACTED" becomes 'STATUS_INACTIVE' after 30 min
-    # pls check this (completed order, normally on open orders)
+    # BTSE websocket: ORDER_INSERTED, TRIGGER_ACTIVATED, TRIGGER_INSERTED
+    # BTSE Rest API "orderState": STATUS_ACTIVE
+    # Unhandled States: "ORDER_PARTIALLY_TRANSACTED"
+    # >>>>>NOTE: "ORDER_FULLY_TRANSACTED" becomes 'STATUS_INACTIVE' after 30 min
     @property
     def is_done(self) -> bool:
         return self.last_state in {"ORDER_FULLY_TRANSACTED"}
@@ -106,7 +102,6 @@ class BtseInFlightOrder(InFlightOrderBase):
         if trade_id != self.exchange_order_id:
             return False
 
-        # TODO: fix these variables 2/25/21
         self.trade_id_set.add(str(trade_id))
         self.executed_amount_base += Decimal(str(trade_update["filledSize"]))
         self.fee_paid += Decimal(str(trade_update["feeAmount"]))
