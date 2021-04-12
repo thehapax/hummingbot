@@ -119,7 +119,7 @@ class BtseExchange(ExchangeBase):
 
     @property
     def in_flight_orders(self) -> Dict[str, BtseInFlightOrder]:
-        print("inside in flight orders in BtseExchange")
+        print("get in flight orders in BtseExchange")
         return self._in_flight_orders
 
     @property
@@ -865,7 +865,7 @@ class BtseExchange(ExchangeBase):
         """
         print(f"\n inside process trade_message in btse_exchange: {trade_msg['orderID']}")
         orderID = trade_msg['orderID']
-        track_order = [o for o in self._in_flight_orders.values() if trade_msg["orderID"] == o.exchange_order_id]
+        track_order = [o for o in self._in_flight_orders.values() if trade_msg["orderID"] == o.client_order_id]
         print(f'\n>>>>> process_trade_msg - track_order: {track_order}')
         print(self.in_flight_orders)
         if not track_order:
