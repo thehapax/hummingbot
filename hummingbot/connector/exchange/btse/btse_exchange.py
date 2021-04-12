@@ -869,7 +869,7 @@ class BtseExchange(ExchangeBase):
         print(f'\n>>>>> process_trade_msg - track_order: {track_order}')
         print(self.in_flight_orders)
         if not track_order:
-            print('TRADE ORDER CANNOT BE FOUND IN INFLIGHT ORDERS')
+            # print('TRADE ORDER CANNOT BE FOUND IN INFLIGHT ORDERS')
             return
         tracked_order = track_order[0]
         feeCurrency = 'BTC'  # temporary place holder
