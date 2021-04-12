@@ -38,7 +38,7 @@ class BtseInFlightOrder(InFlightOrderBase):
     # BTSE websocket: ORDER_INSERTED, TRIGGER_ACTIVATED, TRIGGER_INSERTED
     # BTSE Rest API "orderState": STATUS_ACTIVE
     # Unhandled States: "ORDER_PARTIALLY_TRANSACTED"
-    # >>>>>NOTE: "ORDER_FULLY_TRANSACTED" becomes 'STATUS_INACTIVE' after 30 min
+    # >>>>> NOTE: "ORDER_FULLY_TRANSACTED" becomes 'STATUS_INACTIVE' after 30 min
     @property
     def is_done(self) -> bool:
         return self.last_state in {"ORDER_FULLY_TRANSACTED"}
