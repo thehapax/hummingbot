@@ -107,8 +107,6 @@ class BtseInFlightOrder(InFlightOrderBase):
         self.fee_paid += Decimal(str(trade_update["feeAmount"]))
 
         self.executed_amount_quote += Decimal(str(trade_update['orderValue']))
-        # self.executed_amount_quote += (Decimal(str(trade_update["averageFillPrice"])) *
-        #                               Decimal(str(trade_update["filledSize"])))
 
         if not self.fee_asset:
             self.fee_asset = trade_update["feeCurrency"]
