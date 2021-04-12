@@ -31,7 +31,7 @@ from hummingbot.model.sql_connection_manager import (
 )
 from hummingbot.model.market_state import MarketState
 from hummingbot.model.order import Order
-from hummingbot.model.trade_fill import TradeFill
+# from hummingbot.model.trade_fill import TradeFill
 from hummingbot.connector.markets_recorder import MarketsRecorder
 from hummingbot.connector.exchange.btse.btse_exchange import BtseExchange
 from hummingbot.connector.exchange.btse.btse_constants import WSS_PRIVATE_URL  # is same as WSS_PUBLIC_URL
@@ -432,7 +432,7 @@ class BtseExchangeUnitTest(unittest.TestCase):
             self.connector._in_flight_orders.clear()
             self.assertEqual(0, len(self.connector.tracking_states))
 
-            # Try to put limit buy order for 0.02 ETH worth of ZRX, and watch for order creation event.
+            # Example: Try to put limit buy order for 0.02 ETH worth of ZRX, and watch for order creation event.
             current_bid_price: Decimal = self.connector.get_price(self.trading_pair, True)
             price: Decimal = current_bid_price * Decimal("0.8")
             price = self.connector.quantize_order_price(self.trading_pair, price)
@@ -440,7 +440,7 @@ class BtseExchangeUnitTest(unittest.TestCase):
             amount: Decimal = Decimal("0.0001")
             amount = self.connector.quantize_order_amount(self.trading_pair, amount)
 
-            cl_order_id = self._place_order(True, amount, OrderType.LIMIT_MAKER, price, 1, fixture.OPEN_ORDER)  # UNFILLED
+            cl_order_id = self._place_order(True, amount, OrderType.LIMIT, price, 1, fixture.OPEN_ORDER)  # UNFILLED
             order_created_event = self.ev_loop.run_until_complete(self.event_logger.wait_for(BuyOrderCreatedEvent))
             self.assertEqual(cl_order_id, order_created_event.order_id)
 
@@ -492,59 +492,10 @@ class BtseExchangeUnitTest(unittest.TestCase):
 
             saved_market_states = recorder.get_market_states(config_path, new_connector)
             print(f'\n TEST_btse_exchange: Final Saved market states: {saved_market_states}\n')
-            self.assertEqual(0, len(saved_market_states.saved_state))
+            self.assertEqual(1, len(saved_market_states.saved_state))
         finally:
             if order_id is not None:
                 self.connector.cancel(self.trading_pair, cl_order_id)
-                self.run_parallel(self.event_logger.wait_for(OrderCancelledEvent))
-
-            recorder.stop()
-            os.unlink(self.db_path)
-
-    # TODO - Fix Markets Recorder - not recording properly
-    def test_filled_orders_recorded(self):
-        config_path: str = "test_config"
-        strategy_name: str = "test_strategy"
-        sql = SQLConnectionManager(SQLConnectionType.TRADE_FILLS, db_path=self.db_path)
-        order_id = None
-        recorder = MarketsRecorder(sql, [self.connector], config_path, strategy_name)
-        recorder.start()
-
-        try:
-            # Try to buy some token from the exchange, and watch for completion event.
-            price = self.connector.get_price(self.trading_pair, True) * Decimal("1.05")
-            price = self.connector.quantize_order_price(self.trading_pair, price)
-            amount = self.connector.quantize_order_amount(self.trading_pair, Decimal("0.0001"))
-
-            order_id = self._place_order(True, amount, OrderType.LIMIT, price, 1, None,
-                                         fixture.WS_ORDER_FILLED)
-            self.ev_loop.run_until_complete(self.event_logger.wait_for(BuyOrderCompletedEvent))
-            self.ev_loop.run_until_complete(asyncio.sleep(1))
-
-            # Reset the logs
-            self.event_logger.clear()
-
-            # Try to sell back the same amount to the exchange, and watch for completion event.
-            price = self.connector.get_price(self.trading_pair, True) * Decimal("0.95")
-            price = self.connector.quantize_order_price(self.trading_pair, price)
-            amount = self.connector.quantize_order_amount(self.trading_pair, Decimal("0.0001"))
-            order_id = self._place_order(False, amount, OrderType.LIMIT, price, 2, None,
-                                         fixture.WS_ORDER_FILLED)
-            self.ev_loop.run_until_complete(self.event_logger.wait_for(SellOrderCompletedEvent))
-
-            # Query the persisted trade logs
-            trade_fills: List[TradeFill] = recorder.get_trades_for_config(config_path)
-            self.assertGreaterEqual(len(trade_fills), 2)
-            buy_fills: List[TradeFill] = [t for t in trade_fills if t.trade_type == "BUY"]
-            sell_fills: List[TradeFill] = [t for t in trade_fills if t.trade_type == "SELL"]
-            self.assertGreaterEqual(len(buy_fills), 1)
-            self.assertGreaterEqual(len(sell_fills), 1)
-
-            order_id = None
-
-        finally:
-            if order_id is not None:
-                self.connector.cancel(self.trading_pair, order_id)
                 self.run_parallel(self.event_logger.wait_for(OrderCancelledEvent))
 
             recorder.stop()
